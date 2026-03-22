@@ -1,5 +1,5 @@
 # LinkedIn announcement (draft)
-I’ve just released **pytest-just v0.1.0**.
+I’ve just released **pytest-just v0.1.2**.
 
 `pytest-just` is a pytest plugin that helps teams test `justfile` contracts early and reliably, without over-relying on full command execution.
 

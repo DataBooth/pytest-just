@@ -1,5 +1,5 @@
-# pytest-just v0.1.0 release announcement (draft)
-Today I am releasing `pytest-just` v0.1.0: a pytest plugin for testing `justfile` contracts with fast, side-effect-aware checks.
+# pytest-just v0.1.2 release announcement (draft)
+Today I am releasing `pytest-just` v0.1.2: a pytest plugin for testing `justfile` contracts with fast, side-effect-aware checks.
 
 `pytest-just` focuses on verifying recipe intent and structure:
 

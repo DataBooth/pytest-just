@@ -5,7 +5,7 @@
 - Add packaging/publish automation and release checklist guidance.
 - Expand property-based coverage for additional contract edges.
 
-## 0.1.0 — 2026-03-22
+## 0.1.2 — 2026-03-22
 ### Highlights
 - Bootstrapped `pytest-just` package structure.
 - Added pytest plugin entry point and session-scoped `just` fixture.

@@ -8,4 +8,4 @@ __all__ = [
     "JustfileFixture",
     "UnknownRecipeError",
 ]
-__version__ = "0.1.0"
+__version__ = "0.1.2"
