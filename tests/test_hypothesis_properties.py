@@ -10,6 +10,7 @@ from pathlib import Path
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pytest_just.fixture import JustfileFixture
 
 from pytest_just.plugin import _discover_justfile_root
 
@@ -99,3 +100,42 @@ def test_recipe_signature_is_order_invariant_for_dependencies_and_parameters(
     )
 
     assert signature_a == signature_b
+
+
+@settings(max_examples=50)
+@given(alias_map=st.dictionaries(keys=_NAME_STRATEGY, values=_NAME_STRATEGY, min_size=0, max_size=12))
+def test_aliases_round_trip_for_valid_dump_payload(alias_map: dict[str, str]) -> None:
+    """Ensure alias extraction preserves valid alias-target mappings."""
+    just = JustfileFixture(root=Path("."))
+    just.__dict__["_dump"] = {
+        "recipes": {},
+        "aliases": {name: {"target": target} for name, target in alias_map.items()},
+    }
+
+    assert just.aliases() == alias_map
+
+
+@settings(max_examples=50)
+@given(
+    assignment_map=st.dictionaries(
+        keys=_NAME_STRATEGY,
+        values=st.one_of(
+            st.text(alphabet=string.ascii_letters + string.digits + "-_ ", max_size=24),
+            st.integers(min_value=-100_000, max_value=100_000),
+            st.booleans(),
+            st.none(),
+        ),
+        min_size=0,
+        max_size=12,
+    )
+)
+def test_assignments_stringify_values_for_valid_dump_payload(assignment_map: dict[str, object]) -> None:
+    """Ensure assignment extraction stringifies assignment values consistently."""
+    just = JustfileFixture(root=Path("."))
+    just.__dict__["_dump"] = {
+        "recipes": {},
+        "assignments": {name: {"value": value, "export": False} for name, value in assignment_map.items()},
+    }
+
+    expected = {name: str(value) for name, value in assignment_map.items()}
+    assert just.assignments() == expected

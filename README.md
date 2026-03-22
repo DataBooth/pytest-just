@@ -87,3 +87,28 @@ uv run ruff check .
 uv run ty check
 uv run pytest -q
 ```
+
+## Property-based testing (Hypothesis)
+The test suite includes property-based tests using `hypothesis` to stress stable invariants such as:
+
+- justfile root discovery across varying directory depth
+- body normalisation idempotence
+- recipe signature order invariance
+- alias and assignment mapping round-trip behaviour
+
+Run only property tests:
+```bash
+uv run pytest -q tests/test_hypothesis_properties.py
+```
+
+Show Hypothesis run statistics:
+```bash
+uv run pytest -q --hypothesis-show-statistics
+```
+
+## CI
+GitHub Actions runs on pull requests and pushes to `main`, executing:
+
+- `uv run ruff check .`
+- `uv run ty check`
+- `uv run pytest -q --hypothesis-show-statistics`

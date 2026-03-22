@@ -189,8 +189,29 @@ uv run ruff check .
 uv run ty check
 uv run pytest -q
 ```
+## 10) Property-based testing with Hypothesis
+In addition to example-driven tests, `pytest-just` uses Hypothesis to generate varied inputs and verify invariants.
 
-## 10) Troubleshooting
+Current property checks cover:
+
+- root discovery across arbitrarily nested directories
+- idempotence of recipe body normalisation
+- recipe signature stability when dependency/parameter order changes
+- alias and assignment extraction contracts for valid dump payloads
+
+Run only property tests:
+```bash
+uv run pytest -q tests/test_hypothesis_properties.py
+```
+
+Show generated-case statistics:
+```bash
+uv run pytest -q --hypothesis-show-statistics
+```
+
+If a property test fails, Hypothesis will shrink the failing input to a minimal reproducible example.
+
+## 11) Troubleshooting
 ### `just` not found
 Install `just` and/or pass `--just-bin`.
 
