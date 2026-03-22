@@ -1,0 +1,37 @@
+# Adapted from:
+# https://github.com/actix/actix-web/blob/main/justfile
+
+_list:
+    @just --list
+
+toolchain := ""
+all_features := "--all-features"
+
+# Format workspace.
+fmt:
+    just --unstable --fmt
+    cargo +nightly fmt
+
+[private]
+downgrade-for-msrv:
+    @echo "No downgrades currently needed"
+
+[private]
+check-min:
+    cargo hack --workspace check --no-default-features
+
+# Check workspace.
+check: clippy
+    cargo {{ toolchain }} check --workspace {{ all_features }}
+
+# Run Clippy over workspace.
+clippy:
+    cargo {{ toolchain }} clippy --workspace --all-targets {{ all_features }}
+
+# Test workspace.
+test:
+    cargo {{ toolchain }} test --workspace {{ all_features }}
+
+# Test workspace and docs.
+test-all: test
+    cargo {{ toolchain }} test --doc --workspace {{ all_features }}

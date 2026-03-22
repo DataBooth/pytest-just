@@ -1,0 +1,34 @@
+#!/usr/bin/env just --justfile
+# Adapted from:
+# https://github.com/maplibre/martin/blob/main/justfile
+
+set shell := ["bash", "-c"]
+
+import "./shared.just"
+
+ci_mode := if env("CI", "") != "" { "1" } else { "" }
+release_mode := if env("RELEASE_MODE", "1") != "" { "1" } else { "" }
+
+@_default:
+    @just --list
+
+# Run benchmark tests.
+bench:
+    cargo bench --bench sources
+
+# Build binaries for a target.
+build-release target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build {{ if release_mode == "1" { "--release" } else { "" } }} --target {{ target }}
+
+# Bless tests.
+bless:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Blessing tests in CI mode={{ ci_mode }}"
+    just test
+
+# Run basic tests.
+test:
+    cargo test --workspace
