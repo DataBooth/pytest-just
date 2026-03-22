@@ -1,13 +1,27 @@
 # pytest-just
 A pytest plugin for testing justfiles.
+## What is pytest-just?
+`pytest-just` is a plugin that adds a session-scoped `just` fixture to pytest so you can test `justfile` contracts directly in your test suite.
 
-## Status
-Early-stage project scaffold based on `SPEC.md`.
+It is designed for assertions about recipe structure and intent, including:
 
-## Goals
-- Test recipe existence, dependencies, parameters, and body content.
-- Validate variable threading using `just --dump --dump-format json`.
-- Support safe smoke checks with `just --dry-run`.
+- recipe existence
+- dependency relationships
+- parameter contracts
+- rendered body content
+- alias and assignment mapping
+
+## Why use pytest-just?
+As projects grow, `justfile` automation often becomes critical but under-tested. Small recipe changes can quietly break CI, local developer workflows, or release steps.
+
+`pytest-just` helps by making contract checks:
+
+- fast
+- repeatable
+- easy to run in CI
+- explicit in code review
+
+This catches automation drift early without requiring full end-to-end execution of every command.
 
 ## Tooling
 - Package and commands: `uv`
@@ -20,14 +34,13 @@ Early-stage project scaffold based on `SPEC.md`.
 uv sync
 uv run pytest
 ```
-## How it works
-`pytest-just` does not execute recipes directly. Instead, it asks `just` for structured metadata and rendered recipe text:
+## How does pytest-just work?
+`pytest-just` primarily validates recipe contracts instead of running full recipe side effects. It asks `just` for structured metadata and rendered recipe text:
 
 - `just --dump --dump-format json` for recipe graph, parameters, attributes, aliases, and assignments
 - `just --show <recipe>` for rendered body text checks
 - `just --dry-run <recipe>` for safe command smoke checks
-
-This keeps tests fast and side-effect free while still validating justfile contracts.
+This keeps tests fast and mostly side-effect free while still validating real justfile behaviour.
 
 ## Plugin behaviour
 The plugin registers:
