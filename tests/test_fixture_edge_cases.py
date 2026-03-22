@@ -88,3 +88,52 @@ def test_unknown_recipe_uses_specific_error_type(tmp_path: Path) -> None:
 
     with pytest.raises(UnknownRecipeError):
         just.dependencies("missing")
+
+
+def test_unknown_recipe_error_message_contains_context(tmp_path: Path) -> None:
+    (tmp_path / "justfile").write_text("test:\n    @echo ok\n", encoding="utf-8")
+    just = JustfileFixture(root=tmp_path)
+
+    with pytest.raises(UnknownRecipeError) as exc_info:
+        just.show("missing")
+
+    message = str(exc_info.value)
+    assert "missing" in message
+    assert "Available recipes:" in message
+    assert "test" in message
+
+
+def test_imported_recipe_is_visible(tmp_path: Path) -> None:
+    (tmp_path / "shared.just").write_text("hello:\n    @echo hi\n", encoding="utf-8")
+    (tmp_path / "justfile").write_text('import "shared.just"\n', encoding="utf-8")
+    just = JustfileFixture(root=tmp_path)
+
+    just.assert_exists("hello")
+    just.assert_body_contains("hello", "@echo hi")
+
+
+def test_dry_run_rejects_shebang_recipe(tmp_path: Path) -> None:
+    (tmp_path / "justfile").write_text(
+        "deploy:\n"
+        "    #!/usr/bin/env bash\n"
+        "    echo deploy\n",
+        encoding="utf-8",
+    )
+    just = JustfileFixture(root=tmp_path)
+
+    with pytest.raises(AssertionError) as exc_info:
+        just.dry_run("deploy")
+
+    assert "not dry-run safe" in str(exc_info.value)
+
+
+def test_assert_dry_run_contains_failure_includes_output(tmp_path: Path) -> None:
+    (tmp_path / "justfile").write_text("test:\n    echo hello-world\n", encoding="utf-8")
+    just = JustfileFixture(root=tmp_path)
+
+    with pytest.raises(AssertionError) as exc_info:
+        just.assert_dry_run_contains("test", "goodbye-world")
+
+    message = str(exc_info.value)
+    assert "dry-run output" in message
+    assert "hello-world" in message

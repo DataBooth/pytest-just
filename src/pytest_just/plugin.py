@@ -36,14 +36,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "justfile: marks tests as justfile recipe tests")
 
+def _create_just_fixture(rootpath: Path, justfile_root: str | None, just_bin: str) -> JustfileFixture:
+    if justfile_root:
+        root = Path(justfile_root).resolve()
+    else:
+        root = _discover_justfile_root(rootpath.resolve())
+    return JustfileFixture(root=root, just_bin=just_bin)
+
 
 @pytest.fixture(scope="session")
 def just(pytestconfig: pytest.Config) -> JustfileFixture:
-    root_option = pytestconfig.getoption("justfile_root")
-    if root_option:
-        root = Path(root_option).resolve()
-    else:
-        root = _discover_justfile_root(Path(str(pytestconfig.rootpath)).resolve())
-
-    just_bin = str(pytestconfig.getoption("just_bin"))
-    return JustfileFixture(root=root, just_bin=just_bin)
+    return _create_just_fixture(
+        rootpath=Path(str(pytestconfig.rootpath)),
+        justfile_root=pytestconfig.getoption("justfile_root"),
+        just_bin=str(pytestconfig.getoption("just_bin")),
+    )
