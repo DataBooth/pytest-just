@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pytest_just.errors import UnknownRecipeError
 
 from pytest_just.fixture import JustfileFixture
 from pytest_just.plugin import _discover_justfile_root
@@ -67,10 +68,15 @@ def test_dry_run_returns_completed_process_for_non_shebang_recipe() -> None:
     assert "cargo" in (result.stdout + result.stderr)
 
 
+def test_assert_dry_run_contains_helper() -> None:
+    just = _fixture("actix-web")
+    just.assert_dry_run_contains("test", "cargo")
+
+
 def test_unknown_recipe_error_lists_available_recipes() -> None:
     just = _fixture("async-compression")
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(UnknownRecipeError) as exc_info:
         just.recipe_names()
         just.dependencies("does-not-exist")
 

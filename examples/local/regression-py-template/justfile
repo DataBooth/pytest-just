@@ -1,0 +1,81 @@
+mlflow_port := `uvx tomlq -r '.mlflow.tracking_uri' conf/config.toml | sed -E 's/.*:([0-9]+)$/\1/'`
+prefect_port := `uvx tomlq -r '.prefect.ui_url' conf/config.toml | sed -E 's/.*:([0-9]+)$/\1/'`
+
+# ---------------------------
+# Project Info & Helper Tasks
+# ---------------------------
+
+# List all available recipes by default
+default:
+    @just --list
+
+# ------------------------
+# Synthetic Data Generation
+# ------------------------
+
+# Generate synthetic data for development/testing
+generate-synthetic-data:
+    uv run scripts/gen_synthetic_data.py
+
+# -----------------------
+# Pipeline and Workflow
+# -----------------------
+
+# Pipeline runner depends on server check
+run-pipeline flow_file="src/regression_py_template/prefect_flows.py": 
+    uv run {{ flow_file }}
+
+# -----------------------
+# API and Local UI Servers
+# -----------------------
+
+# Run the FastAPI development server
+run-api:
+    uvicorn  regression_py_template.api.app:app --reload
+
+# ----------------------
+# MLFlow & Prefect Tools
+# ----------------------
+
+# Start MLFlow tracking UI using port from conf/config.toml
+mlflow:
+    echo Starting MLflow on port {{mlflow_port}}
+    uv run mlflow ui --host 0.0.0.0 --port {{mlflow_port}}
+
+
+mlflow-ui:
+    open http://127.0.0.1:{{mlflow_port}}
+
+# Start local Prefect orchestration server
+prefect-server:
+    uv run prefect server start
+
+# View Prefect web UI in browser
+prefect-ui:
+    echo "Opening Prefect UI on port"{{prefect_port}}
+    open http://127.0.0.1:{{prefect_port}}
+
+# Stop the Prefect server
+prefect-stop:
+    uv run prefect server stop
+
+
+# -------------------------------
+# Dependency and Environment Setup
+# -------------------------------
+
+# Bootstrap Python environment and requirements
+uv-setup:
+    # uv init --package --python 3.12
+    uv add $(uv run utils/find_all_imports_to_install.py)
+
+
+# Usage: just kill-port 5000
+kill-port port:
+    @pid=$(lsof -t -i :{{port}}) && \
+    if [ -n "$pid" ]; then \
+      echo "Killing PID(s): $pid on port {{port}}"; \
+      kill -9 $pid; \
+    else \
+      echo "No process running on port {{port}}"; \
+    fi

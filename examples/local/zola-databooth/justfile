@@ -1,0 +1,420 @@
+# Remote deployment configuration
+USER := "databoot"
+HOST := "rs4-syd.serverhostgroup.com"
+DIR := "/home/databoot/public_html"
+PORT := "1988"
+ZOLA_DIR := "databooth"  # Root directory of the Zola project
+BIB := ZOLA_DIR + "/content/sample.bib"  # Bibliography file for pandoc-convert
+CSL := ZOLA_DIR + "/content/vancouver.csl"         # CSL file for pandoc-convert
+
+## Core Recipes
+### Setup
+# List available recipes with descriptions
+default:
+    @just --list
+
+# Install Zola (for macOS using Homebrew)
+install:
+    brew install zola
+
+# Initialize a new Zola project
+init PROJECT_NAME:
+    zola init {{PROJECT_NAME}}
+
+### Standard Workflow
+# Serve the site locally with live reloading
+[no-cd]
+serve: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d "{{ZOLA_DIR}}" ]; then
+        echo "Error: Zola directory '{{ZOLA_DIR}}' does not exist."
+        exit 1
+    fi
+    cd {{ZOLA_DIR}} && zola serve || { echo "Serve failed"; exit 1; }
+
+# Serve the site for local network access (LAN)
+# Defaults: interface=0.0.0.0, base_url=/ (root-relative for best compatibility)
+# Usage examples:
+#   just serve-local
+#   just serve-local 0.0.0.0 /
+#   just serve-local 0.0.0.0 / --drafts
+#   just serve-local 0.0.0.0 / --port 8080
+[no-cd]
+serve-local interface="0.0.0.0" base_url="/" *extra_args="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ ! -d "{{ZOLA_DIR}}" ]; then
+        echo "Error: Zola directory '{{ZOLA_DIR}}' does not exist."
+        exit 1
+    fi
+
+    cd {{ZOLA_DIR}}
+
+    # Best-effort local IP detection.
+    # Note: this is intentionally non-fatal; if we cannot detect a LAN IP, we still serve.
+    LOCAL_IP=""
+
+    case "$(uname -s 2>/dev/null || echo unknown)" in
+        Darwin)
+            LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)
+            ;;
+        Linux)
+            LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+            ;;
+        *)
+            LOCAL_IP=""
+            ;;
+    esac
+
+    # Build the command
+    cmd=(zola serve --interface "{{interface}}")
+
+    if [ -n "{{base_url}}" ]; then
+        cmd+=(--base-url "{{base_url}}")
+    fi
+
+    if [ -n "{{extra_args}}" ]; then
+        # NOTE: extra_args is intentionally appended as-is to allow passing flags like --drafts/--port.
+        cmd+=({{extra_args}})
+    fi
+
+    echo ""
+    echo "Starting Zola serve (LAN)"
+    echo "- Bound to: {{interface}}"
+    echo "- Base URL: {{base_url}}"
+
+    echo ""
+    echo "Open on another device on the same network:"
+    if [ -n "$LOCAL_IP" ]; then
+        echo "- http://$LOCAL_IP:1111 (or update the port if you pass --port)"
+    else
+        echo "- http://<your-ip>:1111 (or update the port if you pass --port)"
+    fi
+    echo "- http://127.0.0.1:1111"
+    echo ""
+
+    echo "Running: ${cmd[*]}"
+    "${cmd[@]}" || { echo "Serve failed"; exit 1; }
+
+# Build the Zola site
+[no-cd]
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d "{{ZOLA_DIR}}" ]; then
+        echo "Error: Zola directory '{{ZOLA_DIR}}' does not exist."
+        exit 1
+    fi
+    cd {{ZOLA_DIR}} && zola build || { echo "Build failed"; exit 1; }
+
+# Check the site for broken links and issues
+[no-cd]
+check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d "{{ZOLA_DIR}}" ]; then
+        echo "Error: Zola directory '{{ZOLA_DIR}}' does not exist."
+        exit 1
+    fi
+    cd {{ZOLA_DIR}} && zola check || { echo "Check failed"; exit 1; }
+
+# Clean the public directory
+clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -d "{{ZOLA_DIR}}/public" ]; then
+        rm -rf {{ZOLA_DIR}}/public
+        echo "Public directory cleaned"
+    else
+        echo "No public directory to clean"
+    fi
+
+## Deployment Recipes
+# Deploy Zola site to ChemiCloud via rsync
+[no-cd]
+deploy: start-ssh build
+    rsync -av --delete -e "ssh -p {{PORT}}" {{ZOLA_DIR}}/public/ {{USER}}@{{HOST}}:{{DIR}}
+
+# Deploy a specific file or directory to ChemiCloud via rsync
+deploy-filepath-only file_path:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -e "{{file_path}}" ]; then
+        echo "Error: File or directory '{{file_path}}' does not exist."
+        exit 1
+    fi
+    rsync -av -e "ssh -p {{PORT}}" {{file_path}} {{USER}}@{{HOST}}:{{DIR}}
+
+
+# Pull in Apollo theme (via .gitsubmodules)
+get-apollo-theme:
+    git submodule update --init --recursive
+
+
+# Backup remote site content to local backups directory
+backup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    BACKUP_DATE=$(date +"%Y-%m-%d_%H%M%S")
+    REMOTE_DIR_NAME=$(basename {{DIR}})
+    BACKUP_DIR="{{ZOLA_DIR}}/backups/${REMOTE_DIR_NAME}_$BACKUP_DATE"
+    mkdir -p "$BACKUP_DIR"
+    rsync -av -e "ssh -p {{PORT}}" {{USER}}@{{HOST}}:{{DIR}}/* "$BACKUP_DIR"
+    echo "Backup completed to $BACKUP_DIR"
+
+# SSH to ChemiCloud
+ssh:
+    ssh -p {{PORT}} {{USER}}@{{HOST}}
+
+# SSH to ChemiCloud (verbose)
+ssh-verbose:
+    ssh -v -p {{PORT}} {{USER}}@{{HOST}}
+
+## SSH Agent Management
+# Start SSH agent and add key (macOS/Apple Keychain)
+start-ssh ssh_key="~/.ssh/id_ed25519_chemicloud":
+    eval "$(ssh-agent -s)"
+    ssh-add --apple-use-keychain {{ssh_key}}
+
+# Check if SSH agent is running
+check-ssh-agent:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "$SSH_AGENT_PID" ]; then
+        ps -p $SSH_AGENT_PID > /dev/null
+        if [ $? -eq 0 ]; then
+            echo "SSH agent is running (PID: $SSH_AGENT_PID)"
+            exit 0
+        else
+            echo "SSH agent is not running (stale PID: $SSH_AGENT_PID)"
+            exit 1
+        fi
+    elif [ -n "$SSH_AUTH_SOCK" ]; then
+        echo "SSH agent is running (socket: $SSH_AUTH_SOCK)"
+        exit 0
+    else
+        echo "SSH agent is not running"
+        exit 1
+    fi
+
+# Start SSH agent if not running and add the key
+start-ssh-agent ssh_key="~/.ssh/id_ed25519_chemicloud": check-ssh-agent
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ $? -ne 0 ]; then
+        echo "Starting SSH agent..."
+        eval "$(ssh-agent -s)"
+    fi
+    echo "Checking for existing keys:"
+    ssh-add -l
+    key_fingerprint=$(ssh-keygen -lf {{ssh_key}} | awk '{print $2}')
+    if ssh-add -l | grep -q "$key_fingerprint"; then
+        echo "SSH key {{ssh_key}} is already added to the agent."
+    else
+        echo "Adding SSH key {{ssh_key}} to the agent..."
+        ssh-add --apple-use-keychain {{ssh_key}}
+        echo "Added SSH key: {{ssh_key}}"
+    fi
+
+# Gather SSH diagnostics for ChemiCloud support
+local-ssh-diag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    REPORT="ssh_support_report_mac_$(date +%Y%m%d_%H%M%S).txt"
+    echo "=== SSH Config for {{HOST}} ===" > "$REPORT"
+    echo >> "$REPORT"
+    echo "--- ~/.ssh/config entries ---" >> "$REPORT"
+    grep -A 5 -i '{{HOST}}' ~/.ssh/config 2>>"$REPORT" || echo "No specific entries found." >> "$REPORT"
+    echo >> "$REPORT"
+    echo "--- SSH keys in ~/.ssh/ ---" >> "$REPORT"
+    ls -l ~/.ssh/id_*_chemicloud* >> "$REPORT"
+    echo >> "$REPORT"
+    echo "--- Public key fingerprints ---" >> "$REPORT"
+    for key in ~/.ssh/id_*_chemicloud.pub; do
+      [ -f "$key" ] && ssh-keygen -lf "$key" >> "$REPORT"
+    done
+    echo >> "$REPORT"
+    echo "--- Test SSH connection (port {{PORT}}) ---" >> "$REPORT"
+    ssh -i ~/.ssh/id_ed25519_chemicloud -p {{PORT}} -o StrictHostKeyChecking=no -o BatchMode=yes -v {{USER}}@{{HOST}} 2>&1 | grep -E "debug1:|Authentication|Permission denied|refused|key" >> "$REPORT" || true
+    echo >> "$REPORT"
+    echo "--- System Info ---" >> "$REPORT"
+    sw_vers >> "$REPORT" 2>/dev/null || true
+    uname -a >> "$REPORT"
+    echo >> "$REPORT"
+    echo "Report saved to $REPORT"
+
+## Manual GitHub Pages Deployment - NOTE: Prefer `.github/workflows/zola-publish-gh-pages.yml` for production
+# Deploy Zola site to GitHub Pages (for testing)
+[no-cd]
+deploy-gh-pages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Warning: This is a manual deployment for testing. Use .github/workflows/zola-publish-gh-pages.yml for production."
+    cd {{ZOLA_DIR}} && zola build
+    git checkout gh-pages || git checkout --orphan gh-pages
+    rm -rf * && mv {{ZOLA_DIR}}/public/* .
+    git add .
+    git commit -m "Deploy site update $(date)" || echo "No changes to commit"
+    git push origin gh-pages --force
+    git checkout main
+    echo "Deployment complete!"
+
+# Clean up gh-pages branch
+clean-gh-pages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git checkout gh-pages
+    git rm -rf .
+    git clean -fd
+    git commit -m "Clean gh-pages branch" || echo "No changes to commit"
+    git push origin gh-pages --force
+    git checkout main
+    echo "gh-pages branch cleaned!"
+
+# Update main branch and redeploy to GitHub Pages
+update-and-deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git checkout main
+    git pull origin main
+    just deploy-gh-pages
+
+
+# Convert file to Zola-compatible Markdown with bibliography and CSL, preserving input front matter
+pandoc-convert input-file overwrite="false":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate inputs
+    if [ ! -f "{{input-file}}" ]; then
+        echo "Error: Input file '{{input-file}}' does not exist."
+        exit 1
+    fi
+    if [ -z "{{BIB}}" ] || [ -z "{{CSL}}" ]; then
+        echo "Error: BIB or CSL variables are not defined."
+        exit 1
+    fi
+
+    # Set output file
+    output_file="{{input-file}}.processed.md"
+    if [ -f "$output_file" ] && [ "{{overwrite}}" != "true" ]; then
+        echo "Warning: Output file '$output_file' already exists. Overwriting..."
+    fi
+
+    # Extract front matter and body
+    temp_body=$(mktemp)
+    front_matter=$(sed -n '/^+++/,/^+++/p' "{{input-file}}")
+    if [ -z "$front_matter" ]; then
+        echo "Warning: No front matter found in '{{input-file}}'. Proceeding with body only."
+        cp "{{input-file}}" "$temp_body"
+    else
+        sed '1,/^+++/d' "{{input-file}}" > "$temp_body"
+    fi
+
+    # Process body with Pandoc
+    temp_processed=$(mktemp)
+    pandoc "$temp_body" \
+        -f markdown \
+        --bibliography="{{BIB}}" \
+        --citeproc \
+        --csl="{{CSL}}" \
+        -t markdown-simple_tables+pipe_tables+raw_html \
+        -o "$temp_processed"
+
+    # Combine front matter and processed body
+    if [ -z "$front_matter" ]; then
+        mv "$temp_processed" "$output_file"
+    else
+        echo "$front_matter" > "$output_file"
+        cat "$temp_processed" >> "$output_file"
+    fi
+
+    # Handle overwrite
+    if [ "{{overwrite}}" = "true" ]; then
+        echo "Overwriting input file '{{input-file}}' with processed content..."
+        mv "$output_file" "{{input-file}}"
+        output_file="{{input-file}}"
+    fi
+
+    # Clean up temporary files
+    rm "$temp_body" "$temp_processed"
+
+    echo "Conversion complete: $output_file"
+
+check-comments:
+    open https://github.com/DataBooth/website-comments/discussions
+
+# ─────────────────────────────────────────────────────────────
+# Official Eisvogel v3.3.0 for Zola → PDF (macOS/BasicTeX ready)
+# ─────────────────────────────────────────────────────────────
+
+# One-time full setup – downloads official Eisvogel v3.3.0 .tar.gz + fixes BasicTeX
+setup: setup-basictex-packages setup-eisvogel
+    @echo "\nSetup complete! You can now run:"
+    @echo "   just pdf content/blog/my-post.md"
+    @echo "   just pdf-all"
+
+# Convert a single Markdown file → pdf/NAME.pdf
+pdf MD_FILE:
+   uv run md_to_pdf.py {{MD_FILE}}
+
+# Convert every .md in content/ (except index.md) in parallel
+pdf-all:
+    find content -type f -name "*.md" ! -name "index.md" | sort | parallel -j8 just pdf {}
+
+# ─────────────────────────────────────────────────────────────
+# Sub-recipes (only run from `setup`)
+# ─────────────────────────────────────────────────────────────
+
+# Install missing LaTeX packages for BasicTeX/macOS only
+setup-basictex-packages:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "$(uname)" != "Darwin" ]]; then
+        echo "Not macOS → skipping BasicTeX fixes"
+        exit 0
+    fi
+    XELATEX_PATH=$(which xelatex 2>/dev/null || echo "")
+    if [[ "$XELATEX_PATH" != "/Library/TeX/texbin/xelatex" ]]; then
+        echo "Full TeX Live detected (not BasicTeX) → nothing to do"
+        exit 0
+    fi
+    echo "BasicTeX detected → installing missing packages + fonts…"
+    sudo tlmgr option repository https://mirror.ctan.org/systems/texlive/tlnet
+    sudo tlmgr update --self
+    sudo tlmgr install --reinstall collection-basic collection-latexextra collection-fontsrecommended
+    sudo tlmgr install \
+      adjustbox collectbox enumitem environ etoolbox fancyhdr float fontspec geometry graphicx hyperref \
+      iftex letltxmacro lipsum marginnote mdframed minted needspace polyglossia sectsty setspace tabto \
+      tcolorbox titling trimspaces ucs xcolor xecjk xepersian xetex lm lmodern listings fvextra upquote catchfile \
+      sourcesanspro sourcecodepro  # ← explicit font fixes for Eisvogel defaults
+    echo "BasicTeX is now complete (fonts included)"
+
+# Download + extract official Eisvogel v3.3.0 release tarball to Pandoc templates dir
+setup-eisvogel:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DIR="$HOME/.local/share/pandoc/templates"
+    mkdir -p "$DIR"
+    TMP_DIR=$(mktemp -d)
+    echo "Downloading official Eisvogel v3.3.0 release tarball from GitHub…"
+    curl -fsSL https://github.com/Wandmalfarbe/pandoc-latex-template/archive/refs/tags/v3.3.0.tar.gz \
+         -o "$TMP_DIR/eisvogel.tar.gz"
+    echo "Extracting tarball to $TMP_DIR..."
+    tar -xzf "$TMP_DIR/eisvogel.tar.gz" -C "$TMP_DIR"
+    
+    # Dynamically find eisvogel.latex (handles root or template-multi-file/ subdir)
+    LATEX_FILE=$(find "$TMP_DIR" -name "eisvogel.latex" | head -1)
+    if [[ -n "$LATEX_FILE" ]] && [[ -f "$LATEX_FILE" ]]; then
+        cp "$LATEX_FILE" "$DIR/eisvogel.latex"
+        echo "Eisvogel v3.3.0 installed to $DIR/eisvogel.latex (from $LATEX_FILE)"
+        echo "Polyglossia safe + Pandoc 3.8.2.1 compatible"
+    else
+        echo "File not found—listing contents for debug:"
+        find "$TMP_DIR" -name "*.latex" | head -5
+        exit 1
+    fi
+    rm -rf "$TMP_DIR"
+    echo "Setup complete – run 'just pdf ...' for your PDFs"

@@ -1,0 +1,156 @@
+# List all available recipes
+default:
+    @just --list
+
+# Generate production requirements.txt from pyproject.toml using uv (excluding dev dependencies)
+reqs:
+    uv pip compile pyproject.toml -o requirements.txt
+
+# Generate Streamlit config file (for legacy app)
+st-config:
+    uv run streamlit config show > legacy-streamlit/.streamlit/config.toml
+
+# Run the new NiceGUI application (recommended)
+app:
+    uv run python -m app.main
+
+# Run legacy Streamlit app
+app-legacy app_name="legacy-streamlit/app/main.py":
+    @echo "⚠️  Running legacy Streamlit application"
+    uv run streamlit run {{app_name}}
+
+# Run specific legacy app variant
+app-legacy-enhanced:
+    @echo "⚠️  Running legacy enhanced Streamlit application"
+    uv run streamlit run legacy-streamlit/app/legacy/main_enhanced.py
+
+# Build Docker image for scots-checkin
+docker-build:
+    docker build -t scots-checkin:latest .
+
+# Run Docker container with port 8501 mapped and environment variable set
+docker-run:
+    docker run -p 8501:8501 -e PORT=8501 scots-checkin:latest
+
+
+kill-and-run port='8501':
+    #!/usr/bin/env sh
+    echo "Killing processes on port {{port}}..."
+    lsof -ti:{{port}} | xargs kill -9 || true
+    echo "Running Docker container..."
+    docker run -p {{port}}:{{port}} -e PORT={{port}} scots-checkin:latest
+
+# Development commands
+
+# Run tests
+test:
+    uv run pytest
+
+# Run tests with coverage
+test-cov:
+    uv run pytest --cov=legacy-streamlit/app --cov-report=html
+
+# Format code with ruff
+format:
+    uv run ruff format .
+
+# Lint code with ruff
+lint:
+    uv run ruff check .
+
+# Fix linting issues
+fix:
+    uv run ruff check --fix .
+
+# Type check with mypy
+type-check:
+    uv run mypy legacy-streamlit/app/
+
+# Run all checks (format, lint, type-check, test)
+check-all: format lint type-check test
+
+# Generate synthetic test data
+data:
+    uv run python legacy-streamlit/app/data_generator.py
+
+# Generate test data for NiceGUI app
+data-nicegui:
+    uv run python -m app.utils.generate_test_data
+
+# Sync local database to MotherDuck
+sync-motherduck:
+    uv run python scripts/sync_to_motherduck.py
+
+# =============================================================================
+# RAILWAY DEPLOYMENT COMMANDS
+# =============================================================================
+
+# Check if Docker is running, start if needed (macOS)
+docker-status:
+    #!/usr/bin/env sh
+    echo "🐳 Checking Docker status..."
+    if docker info >/dev/null 2>&1; then
+        echo "✅ Docker is running and accessible"
+        echo "📊 Docker version:"
+        docker version --format "Client: {{{{.Client.Version}}}}, Server: {{{{.Server.Version}}}}"
+        echo "📈 Docker system info:"
+        docker system df
+    else
+        echo "❌ Docker is not running"
+        echo "🚀 Starting Docker Desktop..."
+        open -a Docker
+        echo "⏳ Waiting for Docker to start (this may take 30-60 seconds)..."
+        # Wait up to 2 minutes for Docker to start
+        timeout=120
+        elapsed=0
+        while [ $elapsed -lt $timeout ]; do
+            if docker info >/dev/null 2>&1; then
+                echo "✅ Docker is now running!"
+                docker version --format "Client: {{{{.Client.Version}}}}, Server: {{{{.Server.Version}}}}"
+                exit 0
+            fi
+            sleep 5
+            elapsed=$((elapsed + 5))
+            echo "⏳ Still waiting... ($elapsed/$timeout seconds)"
+        done
+        echo "⚠️  Docker didn't start within $timeout seconds"
+        echo "💡 Please check Docker Desktop manually"
+        exit 1
+    fi
+
+# Build Docker image locally for testing (with Docker status check)
+docker-build-nicegui: docker-status
+    docker build -t scots-checkin-nicegui:latest .
+
+# Run Docker container locally (test deployment)
+docker-run-nicegui: docker-status
+    docker run -p 8000:8000 -e PORT=8000 scots-checkin-nicegui:latest
+
+# Test Docker build and run
+docker-test: docker-build-nicegui docker-run-nicegui
+
+# Deploy to Railway (requires railway CLI)
+railway-deploy:
+    railway up
+
+# Initialize Railway project (one-time setup)
+railway-init:
+    @echo "Initialize Railway project with:"
+    @echo "1. railway login"
+    @echo "2. railway init"
+    @echo "3. railway link (if connecting to existing project)"
+    @echo "4. railway up (to deploy)"
+
+# Show Railway logs
+railway-logs:
+    railway logs
+
+# Open Railway dashboard
+railway-open:
+    railway open
+
+# =============================================================================
+# LEGACY STREAMLIT COMMANDS
+# =============================================================================
+# Note: These commands are maintained for backward compatibility
+# The main application now uses NiceGUI (use 'just app' above)

@@ -1,0 +1,298 @@
+# Model Risk Management Repository - Task Automation
+# Cross-platform justfile for macOS, Windows, and Linux
+
+# Default recipe - show available commands
+default:
+    @just --list
+
+# Install dependencies
+install:
+    uv sync
+
+# Run tests
+test:
+    uv run pytest tests/ -v
+
+# Run only trading strategy tests
+test-trading:
+    uv run pytest tests/test_trading_model.py -v
+
+# Run linter
+lint:
+    uv run ruff check src/ tests/
+
+# Format code
+format:
+    uv run ruff format src/ tests/
+
+# Type check
+typecheck:
+    uv run mypy src/
+
+# Run all quality checks
+check: lint typecheck test
+
+# Convert all markdown documentation to PDF
+pdf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    echo "Converting markdown documentation to PDF..."
+    echo "Checking for pandoc installation..."
+    
+    if ! command -v pandoc &> /dev/null; then
+        echo "Error: pandoc is not installed."
+        echo "Please install pandoc:"
+        echo "  macOS:   brew install pandoc"
+        echo "  Windows: choco install pandoc"
+        echo "  Linux:   sudo apt-get install pandoc"
+        exit 1
+    fi
+    
+    # Create output directory
+    mkdir -p output/pdf
+    
+    # Convert each markdown file to PDF (use find for portability)
+    find docs -type f -name "*.md" | while read -r md_file; do
+        # Get relative path and create output filename
+        rel_path="${md_file#docs/}"
+        pdf_file="output/pdf/${rel_path%.md}.pdf"
+        
+        # Create subdirectory if needed
+        mkdir -p "$(dirname "$pdf_file")"
+        
+        echo "Converting $md_file -> $pdf_file"
+        pandoc "$md_file" -o "$pdf_file" \
+            --pdf-engine=xelatex \
+            --variable geometry:margin=1in \
+            --variable fontsize=11pt \
+            --toc \
+            --number-sections \
+            || echo "Warning: Failed to convert $md_file"
+    done
+    
+    echo "PDF conversion complete. Output in output/pdf/"
+
+# Convert single markdown file to PDF
+# Usage (from repo root):
+#   just pdf-file docs/REFERENCES.md
+pdf-file md_file:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v pandoc &> /dev/null; then
+        echo "Error: pandoc is not installed."
+        exit 1
+    fi
+
+    md_file="{{md_file}}"
+    # Mirror the layout used by the bulk pdf recipe
+    rel_path="${md_file#docs/}"
+    pdf_file="output/pdf/${rel_path%.md}.pdf"
+    mkdir -p "$(dirname "$pdf_file")"
+
+    echo "Converting $md_file -> $pdf_file"
+    pandoc "$md_file" -o "$pdf_file" \
+        --pdf-engine=xelatex \
+        --variable geometry:margin=1in \
+        --variable fontsize=11pt \
+        --toc \
+        --number-sections
+
+# Clean build artifacts
+clean:
+    #!/usr/bin/env bash
+    rm -rf output/
+    rm -rf .pytest_cache/
+    rm -rf .mypy_cache/
+    rm -rf .ruff_cache/
+    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find . -type f -name "*.pyc" -delete 2>/dev/null || true
+
+# Clean only generated PDFs
+clean-pdf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf output/pdf
+
+# Clean generated Word (.docx) files under client/docs
+clean-docx:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Removing generated .docx files under client/docs..."
+    find client/docs -maxdepth 2 -name "*.docx" -print -delete || true
+
+# Run Python example models
+run-examples:
+    @echo "Running Python example models..."
+    uv run python examples/python/credit_risk/credit_risk_pd.py
+    uv run python examples/python/market_risk/market_risk_var.py
+    uv run python examples/python/trading/trading_example.py
+
+# Run marimo notebook in edit mode
+marimo-edit NOTEBOOK:
+    @echo "Opening {{NOTEBOOK}} in marimo edit mode..."
+    uv run marimo edit {{NOTEBOOK}}
+
+# Run marimo notebook in view/run mode
+marimo-run NOTEBOOK:
+    @echo "Running {{NOTEBOOK}} in marimo view mode..."
+    uv run marimo run {{NOTEBOOK}}
+
+# Create a new marimo notebook
+marimo-new NAME:
+    @echo "Creating new marimo notebook: {{NAME}}.py"
+    uv run marimo new {{NAME}}.py
+
+# Run all marimo example notebooks (Credit Risk)
+marimo-credit:
+    @echo "Opening Credit Risk PD model in marimo..."
+    uv run marimo edit examples/python/credit_risk/marimo_credit_risk_pd.py
+
+# Run Market Risk VaR marimo example
+marimo-var:
+    @echo "Opening Market Risk VaR model in marimo..."
+    uv run marimo edit examples/python/market_risk/marimo_market_risk_var.py
+
+# Run Trading Strategy marimo example
+marimo-trading:
+    @echo "Opening Trading Strategy model in marimo..."
+    uv run marimo edit examples/python/trading/trading_marimo.py
+
+# List all marimo notebooks
+marimo-list:
+    #!/usr/bin/env bash
+    echo "Available marimo notebooks:"
+    find examples/python -name "marimo_*.py" -type f 2>/dev/null || echo "No marimo notebooks found yet"
+
+# Export marimo notebook to HTML
+marimo-export NOTEBOOK:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    notebook="{{NOTEBOOK}}"
+    html_file="${notebook%.py}.html"
+    
+    echo "Exporting $notebook to $html_file"
+    uv run marimo export html "$notebook" -o "$html_file"
+    echo "Export complete: $html_file"
+
+# Export all marimo notebooks to HTML
+marimo-export-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    mkdir -p output/marimo
+    
+    for notebook in examples/python/marimo_*.py; do
+        if [ -f "$notebook" ]; then
+            basename="$(basename "${notebook%.py}")"
+            echo "Exporting $notebook..."
+            uv run marimo export html "$notebook" -o "output/marimo/${basename}.html" 2>/dev/null || echo "Warning: Failed to export $notebook"
+        fi
+    done
+    
+    echo "Export complete. HTML files in output/marimo/"
+
+# Generate model documentation
+docs:
+    @echo "Generating model documentation..."
+    @echo "Model inventory and documentation can be found in docs/"
+
+# Convert a single Markdown file to Word (.docx)
+# Usage:
+#   just docx client/docs/project_brief.md
+#   just docx client/docs/project_brief.md client/docs/templates/mrm-template.docx
+# If TEMPLATE is not provided or empty, the default Pandoc styling is used.
+docx FILE TEMPLATE="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v pandoc > /dev/null 2>&1; then
+        echo "Error: pandoc is not installed."
+        echo "Please install pandoc (e.g. 'brew install pandoc' on macOS)."
+        exit 1
+    fi
+
+    file="{{FILE}}"
+    if [ ! -f "$file" ]; then
+        echo "Error: Markdown file '$file' does not exist."
+        exit 1
+    fi
+
+    out="${file%.md}.docx"
+    template="{{TEMPLATE}}"
+
+    if [ -n "$template" ]; then
+        if [ ! -f "$template" ]; then
+            echo "Error: Word template '$template' does not exist."
+            exit 1
+        fi
+        echo "Converting $file -> $out using template $template"
+        pandoc "$file" --reference-doc="$template" -o "$out"
+    else
+        echo "Converting $file -> $out (default Word styling)"
+        pandoc "$file" -o "$out"
+    fi
+
+# Convert all client project docs under client/docs/ to .docx
+# (excluding project_README.md by default)
+docx-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v pandoc > /dev/null 2>&1; then
+        echo "Error: pandoc is not installed."
+        echo "Please install pandoc (e.g. 'brew install pandoc' on macOS)."
+        exit 1
+    fi
+
+    find client/docs -maxdepth 2 -name "*.md" ! -name "project_README.md" \
+      -exec sh -c '
+        for f in "$@"; do
+          echo "Converting $f -> ${f%.md}.docx"
+          pandoc "$f" -o "${f%.md}.docx"
+        done
+      ' sh {} +
+
+# Generate a timesheet (Markdown + CSV) for the current engagement
+#
+# Uses scripts/timesheet_template.toml for configuration and writes
+# outputs under client/docs/project/ by default.
+timesheet-md:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv run python scripts/generate_timesheet.py
+
+# Generate an Excel timesheet workbook (with basic data validation)
+#
+# The output path is controlled by `excel_path` in
+# scripts/timesheet_template.toml. This can be a path under the repo
+# or an absolute path to a mounted Google Drive folder.
+timesheet-xlsx:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv run python scripts/generate_timesheet_excel.py
+
+# Convenience recipe to generate all timesheet formats
+# (Markdown, CSV via generate_timesheet, and Excel).
+timesheet: timesheet-md timesheet-xlsx
+
+# Validate generated synthetic datasets
+validate-data:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Generating synthetic datasets..."
+    uv run python examples/python/market_risk/generate_data.py
+    uv run python examples/python/credit_risk/credit_risk_pd_generate_data.py
+    uv run python examples/python/trading/generate_data.py
+
+    echo "Validating datasets via examples/python/validate_data.py..."
+    uv run python examples/python/validate_data.py
+
+# Development setup
+dev-setup: install
+    @echo "Development environment setup complete"
+    @echo "Available commands:"
+    @just --list

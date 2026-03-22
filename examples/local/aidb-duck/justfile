@@ -1,0 +1,180 @@
+# AIID DuckDB Analysis Tool - Cross-platform Task Automation
+# Compatible with macOS, Windows, and Linux
+
+# Default recipe to display available commands
+default:
+    @just --list
+
+# Install dependencies using uv
+install:
+    @echo "🔧 Installing dependencies with uv..."
+    uv sync
+
+# Setup the database by downloading and processing AIID data
+setup force="false":
+    @echo "🗃️  Setting up AIID database..."
+    @if [ "{{force}}" = "true" ]; then \
+        uv run python -m src.aidb_duck.setup_aiid_duckdb --force-download; \
+    else \
+        uv run python -m src.aidb_duck.setup_aiid_duckdb; \
+    fi
+
+# Force download and setup (re-download even if snapshot exists)
+setup-force:
+    @just setup true
+
+# Run the Streamlit exploration app
+explore:
+    @echo "🚀 Starting AIID Explorer..."
+    uv run streamlit run src/aidb_duck/explore_aiid.py
+
+# Validate database integrity and data fidelity
+validate output="":
+    @echo "🔍 Running comprehensive database validation..."
+    @if [ -f "data/aiid_offline.duckdb" ]; then \
+        if [ -n "{{output}}" ]; then \
+            uv run src/aidb_duck/validate_database.py --output {{output}}; \
+        else \
+            uv run src/aidb_duck/validate_database.py; \
+        fi \
+    else \
+        echo "❌ Database not found. Run 'just setup' first."; \
+    fi
+
+# Manual spot-check comparison of specific incidents
+spot-check incidents="1 128 500 1000 88":
+    @echo "🎯 Running manual spot-check comparison..."
+    @if [ -f "data/aiid_offline.duckdb" ]; then \
+        uv run src/aidb_duck/manual_comparison.py --incidents {{incidents}}; \
+    else \
+        echo "❌ Database not found. Run 'just setup' first."; \
+    fi
+
+# Quick database query using DuckDB CLI
+query sql="SELECT * FROM metadata":
+    @echo "📊 Running query: {{sql}}"
+    @if [ -f "data/aiid_offline.duckdb" ]; then \
+        duckdb data/aiid_offline.duckdb "{{sql}}"; \
+    else \
+        echo "❌ Database not found. Run 'just setup' first."; \
+    fi
+
+# Show database status and basic info
+status:
+    @echo "📋 Database Status:"
+    @if [ -f "data/aiid_offline.duckdb" ]; then \
+        echo "✅ Database exists: data/aiid_offline.duckdb"; \
+        echo ""; \
+        echo "📈 Metadata:"; \
+        duckdb data/aiid_offline.duckdb "SELECT * FROM metadata"; \
+        echo ""; \
+        echo "📊 Table counts:"; \
+        duckdb data/aiid_offline.duckdb "SELECT 'incidents' as table_name, COUNT(*) as row_count FROM incidents UNION ALL SELECT 'reports', COUNT(*) FROM reports"; \
+    else \
+        echo "❌ Database not found. Run 'just setup' first."; \
+    fi
+
+# Clean generated files (keeps raw data)
+clean:
+    @echo "🧹 Cleaning generated files..."
+    @rm -f data/aiid_offline.duckdb
+    @rm -f data/*.log
+    @echo "✅ Cleaned database and log files"
+
+# Clean all data including downloads
+clean-all:
+    @echo "🧹 Cleaning ALL data files..."
+    @rm -rf data/
+    @echo "✅ Removed all data files"
+
+# Run sample queries to test the database
+test-queries:
+    @echo "🧪 Running sample queries..."
+    @if [ -f "data/aiid_offline.duckdb" ]; then \
+        echo "📊 Yearly trends:"; \
+        duckdb data/aiid_offline.duckdb "SELECT strftime('%Y', date) AS year, COUNT(*) AS count FROM incidents WHERE date IS NOT NULL GROUP BY year ORDER BY year"; \
+        echo ""; \
+        echo "🏷️  Top harm types:"; \
+        duckdb data/aiid_offline.duckdb "SELECT harm_type, COUNT(*) AS count FROM incidents WHERE harm_type IS NOT NULL GROUP BY harm_type ORDER BY count DESC LIMIT 5"; \
+    else \
+        echo "❌ Database not found. Run 'just setup' first."; \
+    fi
+
+# Check system dependencies
+check-deps:
+    @echo "🔍 Checking system dependencies..."
+    @echo -n "Python: "
+    @python --version || echo "❌ Python not found"
+    @echo -n "uv: "
+    @uv --version || echo "❌ uv not found"
+    @echo -n "DuckDB CLI: "
+    @duckdb --version || echo "⚠️  DuckDB CLI not found (optional)"
+    @echo "✅ Dependency check complete"
+
+# Development: Format code (requires ruff)
+format:
+    @echo "🎨 Formatting code..."
+    @if command -v ruff >/dev/null 2>&1; then \
+        ruff format src/; \
+    else \
+        echo "⚠️  ruff not installed. Install with: uv add --dev ruff"; \
+    fi
+
+# Development: Lint code (requires ruff) 
+lint:
+    @echo "🔍 Linting code..."
+    @if command -v ruff >/dev/null 2>&1; then \
+        ruff check src/; \
+    else \
+        echo "⚠️  ruff not installed. Install with: uv add --dev ruff"; \
+    fi
+
+# Export database to CSV files
+export-csv output_dir="exports":
+    @echo "📤 Exporting database to CSV files..."
+    @mkdir -p {{output_dir}}
+    @if [ -f "data/aiid_offline.duckdb" ]; then \
+        duckdb data/aiid_offline.duckdb "COPY (SELECT * FROM incidents) TO '{{output_dir}}/incidents.csv' (HEADER, DELIMITER ',')"; \
+        duckdb data/aiid_offline.duckdb "COPY (SELECT * FROM reports) TO '{{output_dir}}/reports.csv' (HEADER, DELIMITER ',')"; \
+        duckdb data/aiid_offline.duckdb "COPY (SELECT * FROM entities) TO '{{output_dir}}/entities.csv' (HEADER, DELIMITER ',')"; \
+        duckdb data/aiid_offline.duckdb "COPY (SELECT * FROM aiid_full) TO '{{output_dir}}/aiid_full.csv' (HEADER, DELIMITER ',')"; \
+        echo "✅ Exported CSV files to {{output_dir}}/"; \
+    else \
+        echo "❌ Database not found. Run 'just setup' first."; \
+    fi
+
+# Show help with detailed information
+help:
+    @echo "🤖 AIID DuckDB Analysis Tool"
+    @echo ""
+    @echo "📋 Available commands:"
+    @echo ""
+    @echo "Setup & Installation:"
+    @echo "  install      - Install dependencies using uv"
+    @echo "  setup        - Download and setup AIID database"
+    @echo "  setup-force  - Force re-download of AIID data"
+    @echo ""
+    @echo "Usage:"
+    @echo "  explore      - Launch Streamlit web interface"
+    @echo "  query        - Run SQL query (default: metadata)"
+    @echo "  status       - Show database status and info"
+    @echo ""
+    @echo "Maintenance:"
+    @echo "  clean        - Remove database and logs (keep raw data)"
+    @echo "  clean-all    - Remove ALL data files"
+    @echo "  export-csv   - Export database tables to CSV"
+    @echo ""
+    @echo "Development:"
+    @echo "  format       - Format code with ruff"
+    @echo "  lint         - Lint code with ruff"
+    @echo "  test-queries - Run sample database queries"
+    @echo "  check-deps   - Check system dependencies"
+    @echo ""
+    @echo "📖 Quick start:"
+    @echo "  1. just install"
+    @echo "  2. just setup"
+    @echo "  3. just explore"
+    @echo ""
+    @echo "💡 Examples:"
+    @echo "  just query \"SELECT COUNT(*) FROM incidents\""
+    @echo "  just export-csv my_exports"

@@ -1,0 +1,16 @@
+default:
+    @just --list
+
+uv_init:
+    uv init --no-package && rm main.py
+
+install_mojo:
+    # Install mojo from the latest stable build using `uv add` with modular index
+    uv add mojo --index https://modular.gateway.scarf.sh/simple/
+
+update_mojo:
+    # Update mojo to the latest version with uv sync --upgrade-package
+    uv sync --upgrade-package mojo
+
+hello:
+    mojo src/hello.mojo

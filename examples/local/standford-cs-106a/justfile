@@ -1,0 +1,83 @@
+
+
+default:
+  @just --list
+
+
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod
+
+
+#### Attempted to create pdm like recipes with uv however this did not work for now - 16 Aug 2024
+
+# Initialise a new project
+init:
+    #uv init
+    uv add --dev pytest
+    uv add --optional notebook notebook
+
+# Add a production dependency
+add package:
+    uv add {{package}}
+
+# Add a development dependency
+add-dev package:
+    uv add --dev {{package}}
+
+# Install all dependencies from pyproject.toml
+install:
+    uv sync
+
+# Update all dependencies and regenerate lock file
+update:
+    uv add --upgrade .
+    uv lock
+
+# Generate requirements.txt
+requirements:
+    uv pip compile pyproject.toml -o requirements.txt
+
+# Generate requirements-dev.txt (including dev dependencies)
+requirements-dev:
+    uv pip compile pyproject.toml --extra dev -o requirements-dev.txt
+
+# Run tests
+test:
+    uv run pytest
+
+# Run a Python script in the project environment
+run +args:
+    uv run python {{args}}
+
+# Start a Python REPL in the project environment
+repl:
+    uv run python
+
+# Install or update to the specified Python version
+python-install:
+    uv python install
+
+# List installed packages
+list:
+    uv pip list
+
+# Show outdated packages
+outdated:
+    uv pip list --outdated
+
+# Clean up unused packages and caches
+clean:
+    uv pip cache purge
+    uv pip uninstall --all
+
+# Run a development tool (e.g., 'just tool black')
+tool +args:
+    uv tool {{args}}
+
+# Create and activate a virtual environment
+venv:
+    uv venv
+    @echo "To activate the virtual environment, run:"
+    @echo "source .venv/bin/activate  # On Unix-like systems"
+    @echo "# or"
+    @echo ".venv\\Scripts\\activate  # On Windows"

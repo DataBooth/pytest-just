@@ -1,0 +1,65 @@
+# Set script locations as variables
+MAIL_SCRIPT := "scripts/search_apple_mail.py"
+EXTRACT_SCRIPT := "scripts/extract_attachments.py"
+
+default:
+    @just --list
+
+# Search Apple Mail and create a default-named DuckDB database (all notifications@cliniko.com)
+build-db:
+    python {{MAIL_SCRIPT}} --email notifications@cliniko.com --duckdb-file
+
+# Custom search: set sender(s), attachment pattern, DB file, and max attachment size
+build-db-custom email pattern dbfile maxmb="1":
+    python {{MAIL_SCRIPT}} --email {{email}} --attachment {{pattern}} --duckdb-file  --max-attachment-mb {{maxmb}}
+
+# List all attachments in the database
+list-attachments dbfile:
+    duckdb  "SELECT sender, subject, attachment_name, length(attachment_blob) AS size_bytes FROM mail;"
+
+# Extract a specific attachment by name
+extract-one dbfile name outdir=".":
+    python {{EXTRACT_SCRIPT}} --db  --attachment-name {{name}} --outdir {{outdir}}
+
+# Extract all attachments to a directory
+extract-all dbfile outdir=".":
+    python {{EXTRACT_SCRIPT}} --db  --outdir {{outdir}}
+
+# Clean up generated DuckDB files (CAUTION: this deletes all .duckdb files in the current directory!)
+clean:
+    rm -f *.duckdb
+
+# Example: Build DB and extract all attachments (edit as needed)
+# example:
+#     # Get a timestamp for the DB file
+#     timestamp=`date +%Y%m%d_%H%M%S`
+#     dbfile="inbox_${timestamp}.duckdb"
+#     python {{MAIL_SCRIPT}} --email notifications@cliniko.com --duckdb-file "$dbfile"
+#     just list-attachments "$dbfile"
+#     just extract-all "$dbfile" ./attachments/
+
+
+## ------ AppleScript utilities ------
+
+# Link all scripts in the repo's mail/com.apple.mail folder to the Mail scripts folder
+link-mail-scripts:
+	#! /bin/bash
+	mkdir -p "$HOME/Library/Application Scripts/com.apple.mail"
+	for script in ./mail/com.apple.mail/*.scpt; do
+		abs_script="$(cd "$(dirname "$script")"; pwd)/$(basename "$script")"
+		dest="$HOME/Library/Application Scripts/com.apple.mail/$(basename "$script")"
+		ln -sf "$abs_script" "$dest"
+		if [ -L "$dest" ]; then
+			target="$(readlink "$dest")"
+			echo "Linked $(basename "$script") -> $target"
+		else
+			echo "Failed to link $(basename "$script")"
+		fi
+	done
+
+
+
+# Run the find-physio-receipts.scpt AppleScript
+run-find-physio-receipts sender:
+	osascript ./mail/com.apple.mail/find-physio-receipts.scpt "{{sender}}"
+

@@ -1,0 +1,57 @@
+default:
+  @just --list
+
+# Usage:
+# just create-repo test-py-template
+#     -> creates ~/code/github/databooth/test-py-template/...
+#
+# just create-repo test-py-template /tmp
+#     -> creates /tmp/test-py-template/...
+#
+# just clean test-py-template
+# just clean test-py-template /tmp
+
+create-repo repo_name code_dir="code/github/databooth":
+    #!/bin/bash
+    set -eu
+    # Expand code_path to default location in $HOME if not absolute
+    if [[ "{{code_dir}}" = /* ]]; then
+        code_path="{{code_dir}}"
+    else
+        code_path="$HOME/{{code_dir}}"
+    fi
+
+    mkdir -p "$code_path/{{repo_name}}/conf"
+    mkdir -p "$code_path/{{repo_name}}/src/\{\{ project_name \}\}"
+    mkdir -p "$code_path/{{repo_name}}/app"
+    mkdir -p "$code_path/{{repo_name}}/tests"
+    touch "$code_path/{{repo_name}}/copier.yaml"
+    touch "$code_path/{{repo_name}}/pyproject.toml.jinja"
+    touch "$code_path/{{repo_name}}/justfile.jinja"
+    touch "$code_path/{{repo_name}}/README.md.jinja"
+    touch "$code_path/{{repo_name}}/.gitignore"
+    touch "$code_path/{{repo_name}}/.env.example"
+    touch "$code_path/{{repo_name}}/.pre-commit-config.yaml"
+    touch "$code_path/{{repo_name}}/pytest.ini"
+    touch "$code_path/{{repo_name}}/conf/app_config.toml.jinja"
+    touch "$code_path/{{repo_name}}/src/\{\{ project_name \}\}/__init__.py"
+    touch "$code_path/{{repo_name}}/app/main.py"
+    touch "$code_path/{{repo_name}}/tests/__init__.py"
+    touch "$code_path/{{repo_name}}/tests/test_main.py"
+    echo "Created copier template structure at $code_path/{{repo_name}}"
+
+clean repo_name code_dir="code/github/databooth":
+    #!/bin/bash
+    set -eu
+    if [[ "{{code_dir}}" = /* ]]; then
+    code_path="{{code_dir}}"
+    else
+    code_path="$HOME/{{code_dir}}"
+    fi
+    echo "About to remove $code_path/{{repo_name}}"
+    read -p "Type 'yes' to confirm deletion: " confirm
+    if [ "$confirm" = "yes" ]; then
+    rm -irf "$code_path/{{repo_name}}"
+    else
+    echo "Aborted."
+    fi

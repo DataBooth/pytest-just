@@ -1,0 +1,15 @@
+default:
+  @just --list
+
+
+# View/edit DuckDB database with Harlequin CLI
+duck database:
+    harlequin --theme github-dark {{database}}
+
+
+rerender-agl:
+    quarto render notebooks/agl-electricity-usage.ipynb --execute
+
+
+view-agl:
+    open notebooks/agl-electricity-usage.html 

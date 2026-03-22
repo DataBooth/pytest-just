@@ -1,0 +1,309 @@
+# DataSafe DB Processor - justfile
+# A comprehensive set of recipes to demonstrate project functionality
+# Compatible with macOS, Windows, and Linux
+
+# Set shell for better cross-platform compatibility
+set shell := ["bash", "-c"]
+
+# Default recipe - show help
+default:
+    @just --list
+
+# =============================================================================
+# Setup and Dependencies
+# =============================================================================
+
+# Install project dependencies and set up development environment
+setup:
+    @echo "🔧 Setting up DataSafe DB Processor..."
+    uv sync
+    @echo "📋 Copying environment template..."
+    @if [ ! -f .env ]; then cp .env.example .env; echo "⚠️ Please edit .env with your actual keys"; fi
+    @echo "📁 Creating data directory..."
+    mkdir -p data
+    @echo "✅ Setup complete! Run 'just help' to see available commands"
+
+# Install UV package manager (if not installed)
+install-uv:
+    @echo "📦 Installing UV package manager..."
+    @if command -v uv >/dev/null 2>&1; then echo "✅ UV already installed"; else curl -LsSf https://astral.sh/uv/install.sh | sh; fi
+
+# =============================================================================
+# Development and Testing
+# =============================================================================
+
+# Run all tests
+test:
+    @echo "🧪 Running all tests..."
+    uv run pytest tests/ -v
+
+# Run tests with coverage report
+test-coverage:
+    @echo "📊 Running tests with coverage..."
+    uv run pytest tests/ --cov=src/datasafe_db --cov-report=html --cov-report=term
+
+# Run only unit tests (skip integration/slow tests)
+test-unit:
+    @echo "⚡ Running unit tests..."
+    uv run pytest tests/ -k "not integration and not slow" -v
+
+# Run integration tests only
+test-integration:
+    @echo "🌐 Running integration tests..."
+    uv run pytest tests/ -k "integration" -v
+
+# Run security tests with malicious inputs
+test-security:
+    @echo "🔒 Running security validation tests..."
+    @echo "Testing SQL injection protection, unsafe URLs, and parameter validation"
+    uv run python -c "from src.datasafe_db.security import SecurityValidator; from src.datasafe_db.processor import SecurityError; import sys; v = SecurityValidator(); tests = [('SELECT * FROM users; DROP TABLE users;', {}), ('EXEC xp_cmdshell', {}), ('dataset_url', {'dataset_url': 'http://malicious.com/data.csv'}), ('dataset_url', {'dataset_url': '/etc/passwd'})]; passed = 0; for sql, params in tests: exec('try: v.validate_sql_template(sql, params) if params else v._validate_sql_safety(sql); print(f\"❌ FAILED: {sql[:30]}... was not blocked\"); except: print(f\"✅ PASSED: {sql[:30]}... was blocked\"); passed += 1'); print(f'\n🔒 Security test summary: {passed}/{len(tests)} attacks blocked')"
+
+# Format code with ruff
+format:
+    @echo "✨ Formatting code..."
+    uv run ruff format src/ tests/
+
+# Lint code with ruff
+lint:
+    @echo "🔍 Linting code..."
+    uv run ruff check src/ tests/
+
+# Fix linting issues automatically
+fix:
+    uv run ruff check --fix src/ tests/
+
+# Type check with mypy
+typecheck:
+    @echo "🔎 Running type checks..."
+    uv run mypy src/datasafe_db
+
+# Run all quality checks
+quality: lint typecheck
+    @echo "✅ All quality checks passed!"
+
+# =============================================================================
+# CLI Usage Examples
+# =============================================================================
+
+# Show available datasets
+list-datasets:
+    @echo "📊 Available datasets:"
+    uv run datasafe-db list
+
+# Process Titanic dataset with encryption
+demo-titanic:
+    @echo "🚢 Processing Titanic dataset with encryption..."
+    uv run datasafe-db process titanic --config configs/
+
+# Process healthcare dataset
+demo-healthcare:
+    @echo "🏥 Processing healthcare dataset..."
+    uv run datasafe-db process healthcare --config configs/
+
+# Process census dataset with custom database
+demo-census DATABASE_PATH="./data/census_secure.duckdb":
+    @echo "📊 Processing census dataset..."
+    uv run datasafe-db process census --config configs/ --db-path {{DATABASE_PATH}}
+
+# Validate a specific dataset configuration
+validate-config DATASET="titanic":
+    @echo "✅ Validating {{DATASET}} configuration..."
+    uv run datasafe-db validate {{DATASET}} --config configs/
+
+# Show CLI help
+cli-help:
+    @echo "📚 DataSafe DB CLI Help:"
+    uv run datasafe-db --help
+
+# =============================================================================
+# Database Operations
+# =============================================================================
+
+# Create encrypted database with sample data
+create-demo-db:
+    @echo "🗃️ Creating encrypted demo database..."
+    uv run datasafe-db process titanic --config configs/
+    @echo "✅ Demo database created at data/titanic.duckdb"
+
+# Open DuckDB CLI with encrypted database
+duckdb-cli DATABASE_PATH="./data/titanic.duckdb":
+    @echo "🦆 Opening DuckDB CLI with encrypted database..."
+    @echo "📋 Available tables: staging, filtered, users, masking_rules"
+    @echo "🔑 Using encryption key from DUCKDB_KEY environment variable"
+    @if [ -f "{{DATABASE_PATH}}" ]; then \
+        duckdb "{{DATABASE_PATH}}" -c "PRAGMA key='$$DUCKDB_KEY'; .tables"; \
+        duckdb "{{DATABASE_PATH}}"; \
+    else \
+        echo "❌ Database not found: {{DATABASE_PATH}}"; \
+        echo "💡 Run 'just create-demo-db' first"; \
+    fi
+
+# Open DuckDB web UI with encrypted database
+duckdb-ui DATABASE_PATH="./data/titanic.duckdb":
+    @echo "🌐 Opening DuckDB Web UI with encrypted database..."
+    @echo "🔑 Note: You'll need to manually execute PRAGMA key='$$DUCKDB_KEY' in the UI"
+    @if [ -f "{{DATABASE_PATH}}" ]; then \
+        echo "🚀 Opening browser with DuckDB UI..."; \
+        duckdb --ui "{{DATABASE_PATH}}"; \
+    else \
+        echo "❌ Database not found: {{DATABASE_PATH}}"; \
+        echo "💡 Run 'just create-demo-db' first"; \
+    fi
+
+# Export data from encrypted database to CSV
+export-data DATABASE_PATH="./data/titanic.duckdb" TABLE="users" OUTPUT="./data/export.csv":
+    @echo "📤 Exporting {{TABLE}} to {{OUTPUT}}..."
+    @if [ -f "{{DATABASE_PATH}}" ]; then \
+        duckdb "{{DATABASE_PATH}}" -c "PRAGMA key='$$DUCKDB_KEY'; COPY {{TABLE}} TO '{{OUTPUT}}' WITH (FORMAT 'csv', HEADER true);"; \
+        echo "✅ Exported to {{OUTPUT}}"; \
+    else \
+        echo "❌ Database not found: {{DATABASE_PATH}}"; \
+    fi
+
+# =============================================================================
+# GDPR Compliance Examples
+# =============================================================================
+
+# Demonstrate GDPR data access (right to view)
+gdpr-access USER_ID="1" DATABASE_PATH="./data/titanic.duckdb":
+    @echo "👤 GDPR Data Access Request for User {{USER_ID}}"
+    @if [ -f "{{DATABASE_PATH}}" ]; then \
+        duckdb "{{DATABASE_PATH}}" -c "PRAGMA key='$$DUCKDB_KEY'; SELECT * FROM users WHERE PassengerId = {{USER_ID}};"; \
+    else \
+        echo "❌ Database not found. Run 'just create-demo-db' first"; \
+    fi
+
+# Show masking rules applied to data
+show-masking DATABASE_PATH="./data/titanic.duckdb":
+    @echo "🎭 Current masking rules:"
+    @if [ -f "{{DATABASE_PATH}}" ]; then \
+        duckdb "{{DATABASE_PATH}}" -c "PRAGMA key='$$DUCKDB_KEY'; SELECT * FROM masking_rules;"; \
+        echo ""; \
+        echo "📊 Sample masked data:"; \
+        duckdb "{{DATABASE_PATH}}" -c "PRAGMA key='$$DUCKDB_KEY'; SELECT masked_name, masked_age, Sex, Survived FROM users LIMIT 5;"; \
+    else \
+        echo "❌ Database not found. Run 'just create-demo-db' first"; \
+    fi
+
+# =============================================================================
+# Documentation and Examples
+# =============================================================================
+
+# Run all demos to showcase functionality
+demo-all:
+    @echo "🎉 Full DataSafe DB Processor Demo"
+    @echo "=================================="
+    just list-datasets
+    @echo ""
+    just demo-titanic
+    @echo ""
+    just show-masking
+    @echo ""
+    @echo "🔐 Security features:"
+    just test-security
+    @echo ""
+    @echo "✅ Demo complete! Check ./data/ for generated databases"
+
+# Show example SQL queries for analysis
+show-queries DATABASE_PATH="./data/titanic.duckdb":
+    @echo "📊 Example analytical queries on encrypted database:"
+    @echo "===================================================="
+    @if [ -f "{{DATABASE_PATH}}" ]; then \
+        echo "🔍 1. Survival rate by masked age groups:"; \
+        duckdb "{{DATABASE_PATH}}" -c "PRAGMA key='$$DUCKDB_KEY'; SELECT masked_age, AVG(CAST(Survived AS FLOAT)) as survival_rate, COUNT(*) as count FROM users GROUP BY masked_age ORDER BY masked_age;"; \
+        echo ""; \
+        echo "🔍 2. Gender distribution:"; \
+        duckdb "{{DATABASE_PATH}}" -c "PRAGMA key='$$DUCKDB_KEY'; SELECT Sex, COUNT(*) as count, AVG(CAST(Survived AS FLOAT)) as survival_rate FROM users GROUP BY Sex;"; \
+        echo ""; \
+        echo "🔍 3. Sample of masked names (privacy preserved):"; \
+        duckdb "{{DATABASE_PATH}}" -c "PRAGMA key='$$DUCKDB_KEY'; SELECT masked_name, Sex, masked_age FROM users LIMIT 10;"; \
+    else \
+        echo "❌ Database not found. Run 'just create-demo-db' first"; \
+    fi
+
+# =============================================================================
+# Development Tools
+# =============================================================================
+
+# Clean up generated files and databases
+clean:
+    @echo "🧹 Cleaning up..."
+    rm -rf data/*.duckdb
+    rm -rf htmlcov/
+    rm -rf .pytest_cache/
+    rm -rf **/__pycache__/
+    rm -rf src/**/*.pyc
+    rm -rf .coverage
+    rm -rf build/
+    rm -rf dist/
+    rm -rf .mypy_cache/
+    rm -rf .ruff_cache/
+    @echo "✅ Cleanup complete"
+
+# Reset development environment
+reset: clean
+    @echo "🔄 Resetting development environment..."
+    rm -rf .env
+    cp .env.example .env
+    @echo "⚠️ Please edit .env with your actual keys"
+
+# Show project status and environment info
+status:
+    @echo "📋 DataSafe DB Processor Status"
+    @echo "==============================="
+    @echo "🐍 Python version:"
+    uv run python --version
+    @echo "📦 UV version:"
+    uv --version
+    @echo "🗃️ Available databases:"
+    @ls -la data/*.duckdb 2>/dev/null || echo "  (none found - run 'just create-demo-db')"
+    @echo "⚙️ Environment variables:"
+    @if [ -f .env ]; then echo "  ✅ .env file present"; else echo "  ❌ .env file missing"; fi
+    @echo "🧪 Test status:"
+    @uv run pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 || echo "  (run 'just test' to check)"
+
+# =============================================================================
+# CI/CD and Production
+# =============================================================================
+
+# Run all checks as in CI/CD pipeline
+ci: quality test-unit
+    @echo "✅ All CI checks passed!"
+
+# Build the package
+build:
+    @echo "📦 Building package..."
+    uv build
+
+# Generate coverage report and open in browser
+coverage: test-coverage
+    #!/usr/bin/env sh
+    if command -v open >/dev/null 2>&1; then
+        open htmlcov/index.html
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open htmlcov/index.html
+    else
+        echo "Coverage report generated in htmlcov/index.html"
+    fi
+
+# Show help and usage examples
+help:
+    @echo "🎯 DataSafe DB Processor - Available Commands"
+    @echo "=============================================="
+    @echo ""
+    @echo "🏁 Quick Start:"
+    @echo "  just setup          - Set up development environment"
+    @echo "  just demo-titanic    - Run Titanic dataset demo"
+    @echo "  just duckdb-ui       - Open encrypted database in web UI"
+    @echo ""
+    @echo "🧪 Testing:"
+    @echo "  just test            - Run all tests"
+    @echo "  just test-security   - Test security features"
+    @echo "  just quality         - Run linting and type checks"
+    @echo ""
+    @echo "🗃️ Database:"
+    @echo "  just create-demo-db  - Create encrypted demo database"
+    @echo "  just duckdb-cli      - Open database in CLI"
+    @echo "  just show-masking    - Show data masking examples"
+    @echo ""
+    @echo "📚 More commands available with 'just --list'"

@@ -1,0 +1,130 @@
+# Default list recipe
+default:
+    @just --list
+
+# Recipe to create the project scaffold
+create-project:
+    # Create main directories
+    mkdir -p docs demo/sample_videos demo/outputs demo/scripts .github/workflows
+
+    # Create empty/placeholder files
+    # touch README.md (from GitHub template)
+    # touch LICENCE (from GitHub template)
+    # touch justfile (this file)
+
+    # Docs and appendices
+    touch docs/tutorial.md
+    touch docs/ffmpeg-guide.md
+    touch docs/python-video.md
+    touch docs/video-cli.md
+    touch docs/homebrew.md
+    touch docs/warp.md
+    touch docs/justfile-guide.md
+    touch docs/resources.md
+
+    # DaVinci appendix (in root as per your last example)
+    touch docs/README_Appendix_DaVinci.md
+
+    # Demo scripts (example placeholders)
+    touch demo/scripts/example_ffmpeg.sh
+    touch demo/scripts/example_moviepy.py
+    touch demo/scripts/example_justfile_recipe.just
+
+    # GitHub Actions workflow placeholder
+    touch .github/workflows/ci.yml
+
+    # Add .gitkeep to empty folders so they are tracked by git
+    touch demo/sample_videos/.gitkeep
+    touch demo/outputs/.gitkeep
+
+    echo "Project scaffold created. Please edit the placeholder files as needed."
+
+
+# Install essential CLI tools via Homebrew
+install_cli_tools:
+    brew install ffmpeg imagemagick sox yt-dlp
+
+# Convert all .mov files in a directory to .mp4 using ffmpeg
+convert_mov_to_mp4:
+    for f in *.mov; do ffmpeg -i "$$f" "${f%.mov}.mp4"; done
+
+# Extract audio from a video file using ffmpeg
+extract_audio:
+    ffmpeg -i input.mp4 -q:a 0 -map a output.mp3
+
+# Trim a video (first 30 seconds) using ffmpeg
+trim_video:
+    ffmpeg -i input.mp4 -ss 00:00:00 -t 00:00:30 -c copy output_trimmed.mp4
+
+# Batch resize images for storyboards using ImageMagick
+resize_images:
+    mogrify -resize 1920x1080! *.jpg
+
+# Add text watermark to a video using ffmpeg
+add_watermark:
+    ffmpeg -i input.mp4 -vf "drawtext=text='Sample Watermark':fontcolor=white@0.8:x=10:y=H-th-10:fontsize=48" -codec:a copy output_watermarked.mp4
+
+# Batch normalize audio files using SoX
+normalize_audio:
+    for f in *.wav; do sox "$f" "normalized_$f" norm; done
+
+# Download a YouTube video for reference using yt-dlp
+download_youtube:
+    yt-dlp https://youtube.com/watch?v=VIDEO_ID
+
+# # Python: Concatenate two video clips using MoviePy
+# concat_videos:
+#     python3 -c "
+# import moviepy.editor as mp;
+# clip1 = mp.VideoFileClip('scene1.mp4');
+# clip2 = mp.VideoFileClip('scene2.mp4');
+# final = mp.concatenate_videoclips([clip1, clip2]);
+# final.write_videofile('output.mp4')
+# "
+
+# # Python: Extract frames from a video using OpenCV
+# extract_frames:
+#     python3 -c "
+# import cv2;
+# vidcap = cv2.VideoCapture('input.mp4');
+# success, image = vidcap.read();
+# count = 0;
+# while success:
+#     cv2.imwrite(f'frame{{count:04d}}.jpg', image);
+#     success, image = vidcap.read();
+#     count += 1
+# "
+
+# # Python: Batch rename files in a folder
+# batch_rename:
+#     python3 -c "
+# import os;
+# for i, fname in enumerate(sorted(os.listdir('.'))):
+#     if fname.endswith('.mp4'):
+#         os.rename(fname, f'clip_{{i+1:03d}}.mp4')
+# "
+
+
+# Analyze disk usage to find large files (brew install ncdu)
+analyze_disk:
+    ncdu .
+
+
+# Download sample videos for demo editing/modification purposes
+download_sample_videos:
+    mkdir -p demo/sample_videos
+
+    # Download a short MP4 from Sample-Videos.com if not present
+    if [ ! -f demo/sample_videos/sample1.mp4 ]; then \
+        curl -L -o demo/sample_videos/sample1.mp4 "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_30mb.mp4"; \
+    else \
+        echo "sample1.mp4 already exists, skipping download."; \
+    fi
+
+    # Download another sample from Pexels if not present
+    if [ ! -f demo/sample_videos/sample2.mp4 ]; then \
+        curl -L -o demo/sample_videos/sample2.mp4 "https://www.pexels.com/download/video/5264408/"; \
+    else \
+        echo "sample2.mp4 already exists, skipping download."; \
+    fi
+

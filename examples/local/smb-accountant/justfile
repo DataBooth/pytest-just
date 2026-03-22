@@ -1,0 +1,322 @@
+set positional-arguments
+
+default_db := "data/smb_accountant.duckdb"
+
+# List available app workflow recipes.
+default:
+  @just --list
+
+# ---------------------------------------------------------------------------
+# smb-acc app workflow recipes
+# ---------------------------------------------------------------------------
+
+# Initialise or migrate the app database.
+app-init-db:
+  uv run smb-acc init-db --db {{default_db}}
+
+# Show current persisted app settings.
+app-show-settings:
+  uv run smb-acc show-settings --db {{default_db}}
+# Run diagnostic health checks for schema/settings/data consistency.
+app-doctor:
+  uv run smb-acc doctor --db {{default_db}}
+# Run strict diagnostics (fail on warnings and errors).
+app-doctor-strict:
+  uv run smb-acc doctor --strict --db {{default_db}}
+# Create a timestamped backup of the app database.
+app-backup-db:
+  uv run smb-acc backup-db --db {{default_db}}
+# Create a trigger-aware backup only when snapshots are stale (15-minute threshold).
+app-backup-db-trigger reason:
+  uv run smb-acc backup-db --db {{default_db}} --if-stale-minutes 15 --trigger workflow --reason {{reason}}
+
+# Run a strict restore drill against the latest backup snapshot.
+app-backup-restore-drill:
+  uv run smb-acc backup-restore-drill --db {{default_db}} --strict
+
+# Run the guided settings wizard.
+app-wizard-settings:
+  uv run smb-acc wizard settings --db {{default_db}}
+
+# Run the guided contact/client wizard.
+app-wizard-contact:
+  uv run smb-acc wizard contact --db {{default_db}}
+
+# Run the guided invoice wizard.
+app-wizard-invoice:
+  uv run smb-acc wizard invoice --db {{default_db}}
+
+# Run the guided combined client-to-invoice wizard.
+app-wizard-client-to-invoice:
+  uv run smb-acc wizard client-to-invoice --db {{default_db}}
+
+# Run the guided expense wizard.
+app-wizard-expense:
+  uv run smb-acc wizard expense --db {{default_db}}
+
+# Run the guided bank-import wizard.
+app-wizard-bank-import:
+  uv run smb-acc wizard bank-import --db {{default_db}}
+
+# Generate an invoice PDF by invoice ID.
+app-generate-invoice-pdf invoice_id:
+  uv run smb-acc generate-invoice-pdf-cmd --invoice-id {{invoice_id}} --db {{default_db}}
+# Generate schema markdown and Mermaid ERD docs from the current DB.
+app-generate-schema-docs:
+  uv run smb-acc generate-schema-docs --db {{default_db}}
+
+# Generate schema docs to custom output paths.
+app-generate-schema-docs-to schema_doc erd:
+  uv run smb-acc generate-schema-docs --schema-doc {{schema_doc}} --erd {{erd}} --db {{default_db}}
+
+# Generate API reference docs from Python docstrings.
+app-generate-api-docs:
+  uv run python scripts/generate_api_docs.py
+
+# Build documentation site using Zensical.
+app-docs-build:
+  uvx zensical build
+
+# Serve documentation site locally using Zensical.
+app-docs-serve:
+  uvx zensical serve
+
+# Propose/apply bank-to-expense matches for a bank account.
+app-match-expenses bank_account_id:
+  uv run smb-acc match-expenses --bank-account-id {{bank_account_id}} --db {{default_db}}
+
+# Propose/apply bank-to-invoice reconciliation for a bank account.
+app-reconcile bank_account_id:
+  uv run smb-acc reconcile --bank-account-id {{bank_account_id}} --db {{default_db}}
+
+# Run P&L report for a date range (YYYY-MM-DD).
+app-report-pnl start end:
+  uv run smb-acc pnl --start {{start}} --end {{end}} --db {{default_db}}
+
+# Run cashflow report for a date range (YYYY-MM-DD).
+app-report-cashflow start end:
+  uv run smb-acc cashflow --start {{start}} --end {{end}} --db {{default_db}}
+
+# Run BAS summary for a date range (YYYY-MM-DD).
+app-report-bas start end:
+  uv run smb-acc bas --start {{start}} --end {{end}} --db {{default_db}}
+
+# Run aged receivables report as of today.
+app-report-aged-receivables:
+  uv run smb-acc report-aged-receivables --db {{default_db}}
+
+# Run aged receivables report as of a specific date (YYYY-MM-DD).
+app-report-aged-receivables-as-of as_of:
+  uv run smb-acc report-aged-receivables --as-of {{as_of}} --db {{default_db}}
+
+# Run debtor action queue report as of today.
+app-report-debtor-queue:
+  uv run smb-acc report-debtor-queue --db {{default_db}}
+
+# Run debtor action queue report as of a specific date (YYYY-MM-DD).
+app-report-debtor-queue-as-of as_of:
+  uv run smb-acc report-debtor-queue --as-of {{as_of}} --db {{default_db}}
+# Run sent-invoices report (all dates by default).
+app-report-invoices-sent:
+  uv run smb-acc report-invoices-sent --db {{default_db}}
+
+# Run sent-invoices report filtered by issue date bounds (YYYY-MM-DD).
+app-report-invoices-sent-between after before:
+  uv run smb-acc report-invoices-sent --after {{after}} --before {{before}} --db {{default_db}}
+
+# Run sent-invoices report filtered from an issue date (YYYY-MM-DD).
+app-report-invoices-sent-after after:
+  uv run smb-acc report-invoices-sent --after {{after}} --db {{default_db}}
+
+# Run sent-invoices report filtered up to an issue date (YYYY-MM-DD).
+app-report-invoices-sent-before before:
+  uv run smb-acc report-invoices-sent --before {{before}} --db {{default_db}}
+
+# Run client contact report (customers).
+app-report-clients:
+  uv run smb-acc report-clients --db {{default_db}}
+
+# Permanently delete an unlinked contact by ID.
+app-delete-contact contact_id:
+  uv run smb-acc delete-contact --contact-id {{contact_id}} --db {{default_db}}
+
+# Permanently delete an unlinked invoice by ID.
+app-delete-invoice invoice_id:
+  uv run smb-acc delete-invoice --invoice-id {{invoice_id}} --db {{default_db}}
+
+# Archive a bank account by ID.
+app-archive-bank-account bank_account_id:
+  uv run smb-acc archive-bank-account --bank-account-id {{bank_account_id}} --db {{default_db}}
+
+# Unarchive a bank account by ID.
+app-unarchive-bank-account bank_account_id:
+  uv run smb-acc unarchive-bank-account --bank-account-id {{bank_account_id}} --db {{default_db}}
+# Permanently delete an unlinked bank account by ID.
+app-delete-bank-account bank_account_id:
+  uv run smb-acc delete-bank-account --bank-account-id {{bank_account_id}} --db {{default_db}}
+
+# Archive an expense by ID.
+app-archive-expense expense_id:
+  uv run smb-acc archive-expense --expense-id {{expense_id}} --db {{default_db}}
+
+# Unarchive an expense by ID.
+app-unarchive-expense expense_id:
+  uv run smb-acc unarchive-expense --expense-id {{expense_id}} --db {{default_db}}
+
+# Permanently delete an unlinked expense by ID.
+app-delete-expense expense_id:
+  uv run smb-acc delete-expense --expense-id {{expense_id}} --db {{default_db}}
+
+# Export EOFY tax-pack files for an FY ending year (for example, 2026).
+app-tax-pack fy:
+  uv run smb-acc tax-pack-export --fy {{fy}} --db {{default_db}}
+
+# Launch the Streamlit web UI.
+app-ui:
+  uv run streamlit run src/smb_accountant/web/app.py
+
+# Launch the Streamlit web app (alias of app-ui).
+app-web:
+  uv run streamlit run src/smb_accountant/web/app.py
+
+# Seed deterministic demo data (with reset).
+app-seed-demo-data:
+  uv run smb-acc seed-demo-data --db {{default_db}} --reset
+
+# Run local quality checks (lint, type-check, tests).
+app-review:
+  uv run ruff check src tests
+  uv run ty check src
+  uv run pytest -q
+
+# Run pytest with source coverage and missing-line report.
+app-test-coverage:
+  uv run pytest --cov=src/smb_accountant --cov-report=term-missing
+
+# Run a safe receipt pipeline smoke check (requires IMAP_* env vars or keyring credentials).
+app-receipts-smoke:
+  uv run smb-acc ingest-receipts-cmd --dry-run --db {{default_db}}
+  uv run smb-acc extract-receipts --dry-run --db {{default_db}}
+
+# Evaluate receipt extraction quality against a labelled expectations CSV.
+app-evaluate-receipt-extraction expectations_csv:
+  uv run smb-acc evaluate-receipt-extraction --expectations-csv {{expectations_csv}} --db {{default_db}}
+
+# Run initial setup flow.
+workflow-setup:
+  just --set default_db {{default_db}} app-init-db
+  just --set default_db {{default_db}} app-show-settings
+  just --set default_db {{default_db}} app-wizard-settings
+
+# Run new-client creation flow.
+workflow-new-client:
+  just --set default_db {{default_db}} app-wizard-contact
+
+# Run new-invoice creation flow.
+workflow-new-invoice:
+  just --set default_db {{default_db}} app-wizard-invoice
+
+# Run client creation followed by invoice creation.
+workflow-client-to-invoice:
+  just --set default_db {{default_db}} app-wizard-client-to-invoice
+
+# Run banking flow for one bank account.
+workflow-banking bank_account_id:
+  just --set default_db {{default_db}} app-wizard-bank-import
+  just --set default_db {{default_db}} app-match-expenses {{bank_account_id}}
+  just --set default_db {{default_db}} app-backup-db-trigger pre_reconcile
+  just --set default_db {{default_db}} app-reconcile {{bank_account_id}}
+
+# Run core reporting flow for one period.
+workflow-reporting start end:
+  just --set default_db {{default_db}} app-report-pnl {{start}} {{end}}
+  just --set default_db {{default_db}} app-report-cashflow {{start}} {{end}}
+  just --set default_db {{default_db}} app-report-bas {{start}} {{end}}
+
+# Run preflight checks before real-data workflow testing.
+workflow-real-data-preflight:
+  just --set default_db {{default_db}} app-backup-db
+  just --set default_db {{default_db}} app-backup-restore-drill
+  just --set default_db {{default_db}} app-show-settings
+  just --set default_db {{default_db}} app-doctor
+  just --set default_db {{default_db}} app-doctor-strict
+
+# Run core bookkeeping and reporting steps for real-data workflow testing.
+workflow-real-data-core bank_account_id start end:
+  just --set default_db {{default_db}} app-backup-db-trigger pre_client_to_invoice
+  just --set default_db {{default_db}} workflow-client-to-invoice
+  just --set default_db {{default_db}} app-backup-db-trigger pre_wizard_expense
+  just --set default_db {{default_db}} app-wizard-expense
+  just --set default_db {{default_db}} app-backup-db-trigger pre_match_expenses
+  just --set default_db {{default_db}} app-match-expenses {{bank_account_id}}
+  just --set default_db {{default_db}} app-reconcile {{bank_account_id}}
+  just --set default_db {{default_db}} workflow-reporting {{start}} {{end}}
+  just --set default_db {{default_db}} app-report-aged-receivables-as-of {{end}}
+  just --set default_db {{default_db}} app-report-debtor-queue-as-of {{end}}
+
+# Run receipt ingestion/extraction and labelling checks for real-data workflow testing.
+workflow-real-data-receipts:
+  just --set default_db {{default_db}} app-receipts-smoke
+  just --set default_db {{default_db}} app-backup-db-trigger pre_extract_receipts
+  uv run smb-acc extract-receipts --db {{default_db}}
+  just --set default_db {{default_db}} app-backup-db-trigger pre_label_wizard
+  uv run smb-acc report-receipt-labels --limit 50 --db {{default_db}}
+  uv run smb-acc label-receipts-wizard --db {{default_db}}
+
+# Run post-check validation and snapshot backup after real-data workflow testing.
+workflow-real-data-postcheck start end:
+  just --set default_db {{default_db}} app-doctor
+  just --set default_db {{default_db}} app-doctor-strict
+  just --set default_db {{default_db}} workflow-reporting {{start}} {{end}}
+  just --set default_db {{default_db}} app-backup-db
+
+# Run the full real-data workflow testing sequence.
+workflow-real-data bank_account_id start end:
+  just --set default_db {{default_db}} workflow-real-data-preflight
+  just --set default_db {{default_db}} workflow-real-data-core {{bank_account_id}} {{start}} {{end}}
+  just --set default_db {{default_db}} workflow-real-data-receipts
+  just --set default_db {{default_db}} workflow-real-data-postcheck {{start}} {{end}}
+
+# Follow-up hint after setup.
+next-after-setup: workflow-new-client
+
+# Follow-up hint after client creation.
+next-after-client: workflow-new-invoice
+
+# Follow-up hint after invoice creation.
+next-after-invoice invoice_id: (app-generate-invoice-pdf invoice_id)
+
+# Follow-up hint after bank import.
+next-after-bank-import bank_account_id: (app-match-expenses bank_account_id)
+
+# Show available Oz/Warp infrastructure recipes in justfile.warp.
+warp-help:
+  just --justfile justfile.warp --list
+
+# ---------------------------------------------------------------------------
+# Convenience aliases
+# ---------------------------------------------------------------------------
+
+# Alias for app-seed-demo-data.
+seed-demo-data: app-seed-demo-data
+
+# Alias for app-review.
+review: app-review
+
+# Alias for app-report-invoices-sent.
+report-invoices-sent: app-report-invoices-sent
+
+# Alias for app-report-clients.
+report-clients: app-report-clients
+
+# Alias for app-report-aged-receivables.
+report-aged-receivables: app-report-aged-receivables
+
+# Alias for app-report-debtor-queue.
+report-debtor-queue: app-report-debtor-queue
+
+# Alias for app-generate-schema-docs.
+schema-docs: app-generate-schema-docs
+
+# Alias for app-generate-api-docs.
+api-docs: app-generate-api-docs

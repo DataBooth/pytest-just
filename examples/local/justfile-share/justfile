@@ -1,0 +1,90 @@
+default:
+  @just --list
+
+
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod
+
+
+# Ollama commands
+
+# Run a model in interactive mode
+run MODEL:
+    ollama run {{MODEL}}
+
+# List available models locally
+list:
+    ollama list
+
+library:
+    open https://ollama.com/library
+
+# Pull a model from the Ollama library
+pull MODEL:
+    ollama pull {{MODEL}}
+
+# Create a new model
+create MODEL_NAME MODEL_FILE:
+    ollama create {{MODEL_NAME}} -f {{MODEL_FILE}}
+
+# Push a model to the Ollama library
+push MODEL:
+    ollama push {{MODEL}}
+
+# Remove a model
+remove MODEL:
+    ollama rm {{MODEL}}
+
+# Show model information
+info MODEL:
+    ollama show {{MODEL}}
+
+# Copy a model
+copy SOURCE_MODEL TARGET_MODEL:
+    ollama cp {{SOURCE_MODEL}} {{TARGET_MODEL}}
+
+# Serve the Ollama API
+serve:
+    ollama serve
+
+# Generate a response without entering interactive mode
+generate MODEL PROMPT:
+    echo "{{PROMPT}}" | ollama run {{MODEL}}
+
+# Use a specific system prompt
+system_prompt MODEL SYSTEM_PROMPT PROMPT:
+    echo "{{PROMPT}}" | ollama run {{MODEL}} --system "{{SYSTEM_PROMPT}}"
+
+# Set a custom API host
+api_host HOST MODEL="llama3.1:8b":
+    OLLAMA_HOST={{HOST}} ollama run {{MODEL}}
+
+# View available keyboard shortcuts in interactive mode
+shortcuts MODEL="llama3.1:8b":
+    echo type "/? shortcuts" in the interactive prompt
+    ollama run {{MODEL}}
+
+# Check if Ollama server is running
+is_running:
+    @if curl -s http://localhost:11434 | grep -q "Ollama is running"; then \
+        echo "True"; \
+    else \
+        echo "False"; \
+    fi
+
+# Stop Ollama server if it is running with confirmation (default Y)
+stop:
+    #!/usr/bin/env bash
+    if curl -s http://localhost:11434 | grep -q "Ollama is running"; then
+        echo "Ollama is running."
+        read -p "Do you want to stop the Ollama server? [Y/n]: " confirm
+        confirm=$${confirm:-Y}
+        if [[ $${confirm,,} =~ ^(y|yes)$$ ]]; then
+            killall ollama
+            echo "Ollama server stopped."
+        else
+            echo "Ollama server not stopped."
+        fi
+    else
+        echo "Ollama server is not running."
+    fi

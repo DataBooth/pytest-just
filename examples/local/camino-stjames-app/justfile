@@ -1,0 +1,612 @@
+# Camino St James App - Development Commands
+# Python 3.14+ | Streamlit 1.52+ | uv package manager
+
+# Configuration
+APP_NAME := "camino-stjames.app"
+DEFAULT_PORT := "8501"
+DAY := ""
+VOICE := "alba"
+INTRO_VOICE := ""
+BIBLE_VOICE := ""
+PIPER_MODEL := ""     # path to a Piper .onnx model (used for Spanish generation)
+VOICE_TAG := ""       # optional filename tag for Piper voice (defaults to model stem)
+
+# Optional: configure different Piper models/tags for Spanish intro vs Bible
+PIPER_INTRO_MODEL := ""
+PIPER_BIBLE_MODEL := ""
+INTRO_VOICE_TAG := ""
+BIBLE_VOICE_TAG := ""
+PIPER_LENGTH_SCALE := "1.45"  # 1.0 default; >1.0 slower; <1.0 faster
+
+OVERWRITE := ""
+MIN_AUDIO_SEC := "5"
+MAX_AUDIO_SEC := "900"
+
+set dotenv-load
+
+# List all available commands
+default:
+  @just --list
+
+# ==============================================================================
+# Development
+# ==============================================================================
+
+# Run the Streamlit app locally
+app app_name="app/main.py":
+    uv run streamlit run {{app_name}} --server.address=localhost
+
+# Run tests with pytest
+test:
+    uv run pytest tests/ -v
+
+# Update Streamlit configuration file
+update-st-config:
+    uv run streamlit config show > .streamlit/config.toml
+
+# ==============================================================================
+# Content Generation
+# ==============================================================================
+
+# Delete all generated intro audio files (all voices)
+# This is safe to run because audio files are fully reproducible from markdown.
+delete-all-audio:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Deleting generated audio under docs/audio ..."
+    rm -f docs/audio/en/*.wav || true
+
+# Generate English intro audio for all enabled days using Pocket-TTS
+# Optional: set DAY=3 to regenerate only Day 3 (e.g. `just DAY=3 audio-intro-en`)
+# Optional: set OVERWRITE=1 to force regeneration (e.g. `just OVERWRITE=1 audio-intro-en`)
+# Optional: set VOICE=name to use a different Pocket-TTS voice (default: alba)
+audio-intro-en:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DAY="{{DAY}}"
+    VOICE="{{VOICE}}"
+    OVERWRITE_FLAG=""
+    if [ -n "{{OVERWRITE}}" ]; then
+        OVERWRITE_FLAG="--overwrite"
+    fi
+
+    if [ -n "${DAY}" ]; then
+        uv run python app/scripts/generate_intro_audio_pockettts.py --only-day "${DAY}" --voice "${VOICE}" ${OVERWRITE_FLAG}
+    else
+        uv run python app/scripts/generate_intro_audio_pockettts.py --voice "${VOICE}" ${OVERWRITE_FLAG}
+    fi
+
+# Generate English Bible audio for all enabled days using Pocket-TTS
+# Optional: set DAY=3 to regenerate only Day 3 (e.g. `just DAY=3 audio-bible-en`)
+# Optional: set OVERWRITE=1 to force regeneration (e.g. `just OVERWRITE=1 audio-bible-en`)
+# Optional: set VOICE=name to use a different Pocket-TTS voice (default: azelma)
+audio-bible-en:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DAY="{{DAY}}"
+    VOICE="{{VOICE}}"
+    OVERWRITE_FLAG=""
+    if [ -n "{{OVERWRITE}}" ]; then
+        OVERWRITE_FLAG="--overwrite"
+    fi
+
+    if [ -n "${DAY}" ]; then
+        uv run python app/scripts/generate_bible_audio_pockettts.py --only-day "${DAY}" --voice "${VOICE}" ${OVERWRITE_FLAG}
+    else
+        uv run python app/scripts/generate_bible_audio_pockettts.py --voice "${VOICE}" ${OVERWRITE_FLAG}
+    fi
+
+# Generate Spanish intro audio for all enabled days using Piper TTS
+# Required: set PIPER_MODEL to the path of your Piper .onnx model
+# Optional: set DAY=3 to regenerate only Day 3 (e.g. `just DAY=3 audio-intro-es`)
+# Optional: set OVERWRITE=1 to force regeneration
+# Optional: set VOICE_TAG=name to control filename tag (defaults to model stem)
+audio-intro-es:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DAY="{{DAY}}"
+    MODEL="{{PIPER_MODEL}}"
+    VOICE_TAG="{{VOICE_TAG}}"
+
+    if [ -z "${MODEL}" ]; then
+        echo "PIPER_MODEL must be set to a Piper .onnx voice model path" >&2
+        exit 1
+    fi
+
+    OVERWRITE_FLAG=""
+    if [ -n "{{OVERWRITE}}" ]; then
+        OVERWRITE_FLAG="--overwrite"
+    fi
+
+    VOICE_TAG_FLAG=""
+    if [ -n "${VOICE_TAG}" ]; then
+        VOICE_TAG_FLAG="--voice-tag ${VOICE_TAG}"
+    fi
+
+    LENGTH_SCALE="{{PIPER_LENGTH_SCALE}}"
+    LENGTH_SCALE_FLAG=""
+    if [ -n "${LENGTH_SCALE}" ]; then
+        LENGTH_SCALE_FLAG="--length-scale ${LENGTH_SCALE}"
+    fi
+
+    if [ -n "${DAY}" ]; then
+        uv run python app/scripts/generate_intro_audio_piper.py --lang es --model "${MODEL}" ${VOICE_TAG_FLAG} ${LENGTH_SCALE_FLAG} --only-day "${DAY}" ${OVERWRITE_FLAG}
+    else
+        uv run python app/scripts/generate_intro_audio_piper.py --lang es --model "${MODEL}" ${VOICE_TAG_FLAG} ${LENGTH_SCALE_FLAG} ${OVERWRITE_FLAG}
+    fi
+
+# Generate Spanish Bible audio for all enabled days using Piper TTS
+# Required: set PIPER_MODEL to the path of your Piper .onnx model
+# Optional: set DAY=3 to regenerate only Day 3 (e.g. `just DAY=3 audio-bible-es`)
+# Optional: set OVERWRITE=1 to force regeneration
+# Optional: set VOICE_TAG=name to control filename tag (defaults to model stem)
+audio-bible-es:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DAY="{{DAY}}"
+    MODEL="{{PIPER_MODEL}}"
+    VOICE_TAG="{{VOICE_TAG}}"
+
+    if [ -z "${MODEL}" ]; then
+        echo "PIPER_MODEL must be set to a Piper .onnx voice model path" >&2
+        exit 1
+    fi
+
+    OVERWRITE_FLAG=""
+    if [ -n "{{OVERWRITE}}" ]; then
+        OVERWRITE_FLAG="--overwrite"
+    fi
+
+    VOICE_TAG_FLAG=""
+    if [ -n "${VOICE_TAG}" ]; then
+        VOICE_TAG_FLAG="--voice-tag ${VOICE_TAG}"
+    fi
+
+    LENGTH_SCALE="{{PIPER_LENGTH_SCALE}}"
+    LENGTH_SCALE_FLAG=""
+    if [ -n "${LENGTH_SCALE}" ]; then
+        LENGTH_SCALE_FLAG="--length-scale ${LENGTH_SCALE}"
+    fi
+
+    if [ -n "${DAY}" ]; then
+        uv run python app/scripts/generate_bible_audio_piper.py --lang es --model "${MODEL}" ${VOICE_TAG_FLAG} ${LENGTH_SCALE_FLAG} --only-day "${DAY}" ${OVERWRITE_FLAG}
+    else
+        uv run python app/scripts/generate_bible_audio_piper.py --lang es --model "${MODEL}" ${VOICE_TAG_FLAG} ${LENGTH_SCALE_FLAG} ${OVERWRITE_FLAG}
+    fi
+
+# Concatenate intro + Bible audio into a single file per day using ffmpeg
+# Requires `ffmpeg` to be installed on your system (not part of Python deps).
+# Usage examples:
+#   just concat-intro-bible-en           # all days (intro + bible, same voice)
+#   just DAY=3 concat-intro-bible-en     # only Day 3
+concat-intro-bible-en:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    : "${DAY:=}"
+
+    concat_one_day() {
+        local day_num="$1"
+        local intro="docs/audio/en/day${day_num}_intro_{{VOICE}}_pockettts.wav"
+        local bible="docs/audio/en/day${day_num}_bible_{{VOICE}}_pockettts.wav"
+        local output="docs/audio/en/day${day_num}_intro_bible_{{VOICE}}_pockettts.m4a"
+
+        if [ ! -f "${intro}" ] || [ ! -f "${bible}" ]; then
+            echo "Skipping Day ${day_num}: missing intro or bible audio for voice {{VOICE}}" >&2
+            return
+        fi
+
+        echo "Concatenating Day ${day_num} intro + Bible → ${output} (with 1.75s pause, AAC m4a)"
+        ffmpeg -y -i "${intro}" -i "${bible}" \
+            -filter_complex "[0:a]apad=pad_dur=1.75[a0];[a0][1:a]concat=n=2:v=0:a=1[a]" \
+            -map "[a]" -c:a aac -b:a 96k -movflags +faststart "${output}" >/dev/null 2>&1
+    }
+
+    if [ -n "${DAY}" ]; then
+        concat_one_day "${DAY}"
+    else
+        for d in $(seq 1 16); do
+            concat_one_day "${d}"
+        done
+    fi
+
+# Concatenate intro (INTRO_VOICE) + Bible (BIBLE_VOICE) into a single file per day
+# e.g. intro=eponine, bible=azelma → dayN_intro_bible_eponine_azelma_pockettts.wav
+# Usage examples:
+#   just INTRO_VOICE=eponine BIBLE_VOICE=azelma concat-intro-bible-mixed
+#   just DAY=3 INTRO_VOICE=eponine BIBLE_VOICE=azelma concat-intro-bible-mixed
+concat-intro-bible-mixed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    : "${DAY:=}"
+
+    INTRO_VOICE="{{INTRO_VOICE}}"
+    BIBLE_VOICE="{{BIBLE_VOICE}}"
+
+    if [ -z "${INTRO_VOICE}" ] || [ -z "${BIBLE_VOICE}" ]; then
+        echo "INTRO_VOICE and BIBLE_VOICE must be set" >&2
+        exit 1
+    fi
+
+    concat_mixed_one_day() {
+        local day_num="$1"
+        local intro="docs/audio/en/day${day_num}_intro_${INTRO_VOICE}_pockettts.wav"
+        local bible="docs/audio/en/day${day_num}_bible_${BIBLE_VOICE}_pockettts.wav"
+        local output="docs/audio/en/day${day_num}_intro_bible_${INTRO_VOICE}_${BIBLE_VOICE}_pockettts.m4a"
+
+        # Auto-generate missing intro or Bible audio for this day
+        if [ ! -f "${intro}" ]; then
+            echo "Generating missing intro for Day ${day_num} with voice ${INTRO_VOICE}"
+            just DAY="${day_num}" VOICE="${INTRO_VOICE}" OVERWRITE=1 audio-intro-en
+        fi
+        if [ ! -f "${bible}" ]; then
+            echo "Generating missing Bible for Day ${day_num} with voice ${BIBLE_VOICE}"
+            just DAY="${day_num}" VOICE="${BIBLE_VOICE}" OVERWRITE=1 audio-bible-en
+        fi
+
+        if [ ! -f "${intro}" ] || [ ! -f "${bible}" ]; then
+            echo "Skipping Day ${day_num}: intro (${intro}) or bible (${bible}) still missing after generation" >&2
+            return
+        fi
+
+        echo "Concatenating Day ${day_num} intro (${INTRO_VOICE}) + Bible (${BIBLE_VOICE}) → ${output} (with 1.75s pause, AAC m4a)"
+        ffmpeg -y -i "${intro}" -i "${bible}" \
+            -filter_complex "[0:a]apad=pad_dur=1.75[a0];[a0][1:a]concat=n=2:v=0:a=1[a]" \
+            -map "[a]" -c:a aac -b:a 96k -movflags +faststart "${output}" >/dev/null 2>&1
+    }
+
+    if [ -n "${DAY}" ]; then
+        concat_mixed_one_day "${DAY}"
+    else
+        # Only days 1–15 have Bible passages; Day 16 is "Next Steps" with no bible_md.
+        for d in $(seq 1 15); do
+            concat_mixed_one_day "${d}"
+        done
+    fi
+
+# Concatenate Spanish intro + Bible audio into a single file per day using ffmpeg
+# Requires `ffmpeg` to be installed on your system (not part of Python deps).
+#
+# This expects Piper-generated wav intermediates:
+# - docs/audio/es/dayN_intro_${VOICE_TAG}_piper.wav
+# - docs/audio/es/dayN_bible_${VOICE_TAG}_piper.wav
+#
+# Usage examples:
+#   just DAY=1 VOICE_TAG=es_ES-sharvard-medium concat-intro-bible-es
+concat-intro-bible-es:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DAY="{{DAY}}"
+
+    VOICE_TAG="{{VOICE_TAG}}"
+
+    # If VOICE_TAG is not provided, try to infer it for a single-day run.
+    # (This keeps the common Day 1 review workflow convenient.)
+    if [ -z "${VOICE_TAG}" ]; then
+        if [ -z "${DAY}" ]; then
+            echo "VOICE_TAG must be set when concatenating multiple days" >&2
+            exit 1
+        fi
+
+        shopt -s nullglob
+        matches=(docs/audio/es/day${DAY}_intro_*_piper.wav)
+        shopt -u nullglob
+
+        if [ "${#matches[@]}" -ne 1 ]; then
+            echo "Could not infer VOICE_TAG for Day ${DAY}. Set VOICE_TAG explicitly." >&2
+            exit 1
+        fi
+
+        # Extract the tag from: docs/audio/es/dayN_intro_<TAG>_piper.wav
+        base=$(basename "${matches[0]}")
+        VOICE_TAG=${base#day${DAY}_intro_}
+        VOICE_TAG=${VOICE_TAG%_piper.wav}
+
+        echo "Inferred VOICE_TAG=${VOICE_TAG} from ${matches[0]}"
+    fi
+
+    concat_one_day() {
+        local day_num="$1"
+        local intro="docs/audio/es/day${day_num}_intro_${VOICE_TAG}_piper.wav"
+        local bible="docs/audio/es/day${day_num}_bible_${VOICE_TAG}_piper.wav"
+        local output="docs/audio/es/day${day_num}_intro_bible_${VOICE_TAG}_piper.m4a"
+
+        if [ ! -f "${intro}" ] || [ ! -f "${bible}" ]; then
+            echo "Skipping Day ${day_num}: missing intro or bible audio for VOICE_TAG=${VOICE_TAG}" >&2
+            return
+        fi
+
+        echo "Concatenating Day ${day_num} Spanish intro + Bible → ${output} (with 1.75s pause, AAC m4a)"
+        ffmpeg -y -i "${intro}" -i "${bible}" \
+            -filter_complex "[0:a]apad=pad_dur=1.75[a0];[a0][1:a]concat=n=2:v=0:a=1[a]" \
+            -map "[a]" -c:a aac -b:a 96k -movflags +faststart "${output}" >/dev/null 2>&1
+    }
+
+    if [ -n "${DAY}" ]; then
+        concat_one_day "${DAY}"
+    else
+        # Only days 1–15 have Bible passages; Day 16 is "Next Steps" with no bible_md.
+        for d in $(seq 1 15); do
+            concat_one_day "${d}"
+        done
+    fi
+
+# Concatenate Spanish intro (INTRO_VOICE_TAG) + Bible (BIBLE_VOICE_TAG) into a single file per day
+# This supports using two different Piper voices/models (e.g. both female, or different accents).
+#
+# Usage examples:
+#   just DAY=1 \
+#     PIPER_INTRO_MODEL=~/piper/es_ES-sharvard-medium.onnx INTRO_VOICE_TAG=es_ES-sharvard-medium \
+#     PIPER_BIBLE_MODEL=~/piper/es_ES-sharvard-medium.onnx BIBLE_VOICE_TAG=es_ES-sharvard-medium \
+#     concat-intro-bible-es-mixed
+concat-intro-bible-es-mixed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DAY="{{DAY}}"
+
+    INTRO_MODEL="{{PIPER_INTRO_MODEL}}"
+    BIBLE_MODEL="{{PIPER_BIBLE_MODEL}}"
+    INTRO_TAG="{{INTRO_VOICE_TAG}}"
+    BIBLE_TAG="{{BIBLE_VOICE_TAG}}"
+
+    if [ -z "${INTRO_MODEL}" ] || [ -z "${BIBLE_MODEL}" ]; then
+        echo "PIPER_INTRO_MODEL and PIPER_BIBLE_MODEL must be set" >&2
+        exit 1
+    fi
+    if [ -z "${INTRO_TAG}" ] || [ -z "${BIBLE_TAG}" ]; then
+        echo "INTRO_VOICE_TAG and BIBLE_VOICE_TAG must be set" >&2
+        exit 1
+    fi
+
+    concat_mixed_one_day() {
+        local day_num="$1"
+        local intro="docs/audio/es/day${day_num}_intro_${INTRO_TAG}_piper.wav"
+        local bible="docs/audio/es/day${day_num}_bible_${BIBLE_TAG}_piper.wav"
+        local output="docs/audio/es/day${day_num}_intro_bible_${INTRO_TAG}_${BIBLE_TAG}_piper.m4a"
+
+        # Auto-generate missing intro or Bible audio for this day
+        if [ ! -f "${intro}" ]; then
+            echo "Generating missing Spanish intro for Day ${day_num} with model ${INTRO_MODEL} (tag=${INTRO_TAG})"
+            just DAY="${day_num}" PIPER_MODEL="${INTRO_MODEL}" VOICE_TAG="${INTRO_TAG}" OVERWRITE=1 audio-intro-es
+        fi
+        if [ ! -f "${bible}" ]; then
+            echo "Generating missing Spanish Bible for Day ${day_num} with model ${BIBLE_MODEL} (tag=${BIBLE_TAG})"
+            just DAY="${day_num}" PIPER_MODEL="${BIBLE_MODEL}" VOICE_TAG="${BIBLE_TAG}" OVERWRITE=1 audio-bible-es
+        fi
+
+        if [ ! -f "${intro}" ] || [ ! -f "${bible}" ]; then
+            echo "Skipping Day ${day_num}: intro (${intro}) or bible (${bible}) still missing after generation" >&2
+            return
+        fi
+
+        echo "Concatenating Day ${day_num} Spanish intro (${INTRO_TAG}) + Bible (${BIBLE_TAG}) → ${output} (with 1.75s pause, AAC m4a)"
+        ffmpeg -y -i "${intro}" -i "${bible}" \
+            -filter_complex "[0:a]apad=pad_dur=1.75[a0];[a0][1:a]concat=n=2:v=0:a=1[a]" \
+            -map "[a]" -c:a aac -b:a 96k -movflags +faststart "${output}" >/dev/null 2>&1
+    }
+
+    if [ -n "${DAY}" ]; then
+        concat_mixed_one_day "${DAY}"
+    else
+        # Only days 1–15 have Bible passages; Day 16 is "Next Steps" with no bible_md.
+        for d in $(seq 1 15); do
+            concat_mixed_one_day "${d}"
+        done
+    fi
+
+# Verify audio durations under docs/audio/en against simple thresholds.
+# By default, flags any wav shorter than MIN_AUDIO_SEC or longer than MAX_AUDIO_SEC.
+# Usage examples:
+#   just verify-audio                # use default thresholds (5s–900s)
+#   just MIN_AUDIO_SEC=10 verify-audio
+#   just MAX_AUDIO_SEC=600 verify-audio
+verify-audio:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    MIN="{{MIN_AUDIO_SEC}}"
+    MAX="{{MAX_AUDIO_SEC}}"
+
+    if ! command -v ffprobe >/dev/null 2>&1; then
+        echo "ffprobe not found; please install ffmpeg/ffprobe to use verify-audio" >&2
+        exit 1
+    fi
+
+    echo "Verifying audio durations in docs/audio/en (min=${MIN}s, max=${MAX}s)"
+    echo
+
+    shopt -s nullglob
+    found_any=0
+    issues=0
+
+    for f in docs/audio/en/*.wav; do
+        found_any=1
+        # duration in seconds (integer)
+        dur=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${f}" | awk '{printf "%d", $1}') || dur="0"
+
+        status="OK"
+        if [ "${dur}" -lt "${MIN}" ] || [ "${dur}" -gt "${MAX}" ]; then
+            status="OUT_OF_RANGE"
+            issues=$((issues+1))
+        fi
+
+        printf "%6ss  %-12s  %s\n" "${dur}" "[${status}]" "${f}"
+    done
+
+    if [ "${found_any}" -eq 0 ]; then
+        echo "No wav files found under docs/audio/en" >&2
+        exit 1
+    fi
+
+    echo
+    if [ "${issues}" -gt 0 ]; then
+        echo "Found ${issues} file(s) outside the ${MIN}-${MAX}s range."
+        exit 1
+    else
+        echo "All audio files are within the configured range."
+    fi
+
+# Generate PDF for specific language (en or es)
+pdf lang:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Generate markdown content
+    uv run python app/scripts/create_pdf_version.py {{lang}} > docs/temp-{{lang}}.md
+    # Combine template with content
+    cat docs/pdf-template.qmd docs/temp-{{lang}}.md > docs/temp-{{lang}}.qmd
+    # Render to PDF in docs directory
+    cd docs && quarto render temp-{{lang}}.qmd --to pdf --output Camino-Who-was-St-James.{{lang}}.pdf && cd ..
+    # Clean up temp files
+    rm -f docs/temp-{{lang}}.md docs/temp-{{lang}}.qmd
+
+# Generate both English and Spanish PDFs
+pdf-all:
+    just pdf en
+    just pdf es
+
+# Open the generated PDF
+view-pdf:
+    open docs/Camino-Who-was-St-James.en.pdf
+
+# Process and watermark images
+watermark:
+    uv run python app/scripts/image_processing_size_watermark.py
+
+# ==============================================================================
+# Dependency Management
+# ==============================================================================
+
+# Update all dependencies to latest versions
+upgrade:
+    uv sync --upgrade
+    just reqs
+
+# Export production dependencies to requirements.txt
+reqs:
+    uv export --no-dev -o requirements.txt
+
+# Export all dependencies including dev
+reqs-dev:
+    uv export -o requirements-dev.txt
+
+# ==============================================================================
+# Docker
+# ==============================================================================
+
+# Build Docker image (no cache)
+build:
+    docker build --no-cache -t {{APP_NAME}} .
+
+# Build with cache for faster iteration
+build-fast:
+    docker build -t {{APP_NAME}} .
+
+# Local Docker smoke test: build image, run container, and verify HTTP 200.
+# Usage:
+#   just docker-smoke
+#   just docker-smoke 8502
+# Notes:
+# - Requires Docker daemon to be running.
+# - Uses curl to check the app endpoint.
+docker-smoke port=DEFAULT_PORT:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    PORT="{{port}}"
+
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "docker not found on PATH" >&2
+        exit 1
+    fi
+
+    # Fast fail if daemon isn't reachable
+    if ! docker info >/dev/null 2>&1; then
+        echo "Docker daemon is not running (docker info failed)" >&2
+        exit 1
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "curl not found on PATH" >&2
+        exit 1
+    fi
+
+    just build-fast
+
+    CID=$(docker run -d --rm -e PORT="${PORT}" -p "${PORT}:${PORT}" "{{APP_NAME}}")
+    echo "Started container: ${CID}"
+
+    cleanup() {
+        docker stop "${CID}" >/dev/null 2>&1 || true
+    }
+    trap cleanup EXIT
+
+    # Wait for Streamlit to come up (simple, bounded)
+    for i in $(seq 1 30); do
+        code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/" || true)
+        if [ "${code}" = "200" ]; then
+            echo "OK: http://localhost:${PORT}/ returned 200"
+            docker logs --tail 30 "${CID}" || true
+            exit 0
+        fi
+        sleep 1
+    done
+
+    echo "Timed out waiting for HTTP 200 from http://localhost:${PORT}/" >&2
+    docker logs --tail 60 "${CID}" || true
+    exit 1
+
+# Run Docker container
+run port=DEFAULT_PORT:
+    docker run -e PORT={{port}} -p {{port}}:{{port}} {{APP_NAME}}
+
+# Build and run in one command
+up port=DEFAULT_PORT:
+    just build
+    just run {{port}}
+
+# Stop and remove all app containers
+down:
+    docker stop $(docker ps -q --filter ancestor={{APP_NAME}}) 2>/dev/null || true
+    docker rm $(docker ps -a -q --filter ancestor={{APP_NAME}}) 2>/dev/null || true
+
+# Open bash shell in container
+shell:
+    docker run -it --entrypoint /bin/bash {{APP_NAME}}
+
+# View container logs
+logs:
+    docker logs $(docker ps -q --filter ancestor={{APP_NAME}})
+
+# ==============================================================================
+# Git
+# ==============================================================================
+
+# Pull and push changes
+sync:
+    git pull && git push
+
+# ==============================================================================
+# Analytics
+# ==============================================================================
+
+# Test Umami analytics API connection
+test-umami:
+    curl https://api.umami.is/v1/websites \
+        -H "Accept: application/json" \
+        -H "x-umami-api-key: $UMAMI_API_KEY"
+
+# Generate PDF from analytics report
+pdf-analytics report="docs/analytics/2025-H2-analytics-report.md":
+    quarto render {{report}} --to pdf
+
+# Generate PDF and open it
+pdf-analytics-view:
+    just pdf-analytics
+    open docs/analytics/2025-H2-analytics-report.pdf

@@ -1,0 +1,3 @@
+r-notebook:
+    R
+    install.packages('devtools')

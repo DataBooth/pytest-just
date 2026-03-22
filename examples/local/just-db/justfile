@@ -1,0 +1,38 @@
+jm := "src/just_db/cli.py"
+
+# Default list recipe
+default:
+    @just --list
+
+# Discover just recipes in a directory (default: .)
+discover-recipes dir=".":
+    uv run {{ jm }} discover --root_dir {{ dir }}
+
+# Parse and store recipes in a directory (default: .)
+parse-store dir=".":
+    uv run {{ jm }} parse_and_store --root_dir {{ dir }}
+
+# List justfiles in the database, optionally filter by pattern (SQL LIKE, default is all)
+list-justfiles db="just_recipes.duckdb" pattern="%" limit="100":
+    uv run {{ jm }} list_justfiles --db_path {{ db }} --pattern {{ pattern }} --limit {{ limit }}
+
+
+# Reconstruct a justfile from the database and print to stdout or write to file if out is given
+reconstruct-justfile db="just_recipes.duckdb" justfile="" out="":
+    if [ -z "{{justfile}}" ]; then \
+      echo "Error: justfile argument is required!"; \
+      exit 1; \
+    fi
+    if [ -z "{{out}}" ]; then \
+      uv run {{ jm }} reconstruct_justfile --db_path {{db}} --justfile_path {{justfile}}; \
+    else \
+      uv run {{ jm }} reconstruct_justfile --db_path {{db}} --justfile_path {{justfile}} --output_path {{out}}; \
+    fi
+
+# Compare the original justfile with its reconstructed version
+compare-justfile db="just_recipes.duckdb" justfile="":
+    if [ -z "{{justfile}}" ]; then \
+      echo "Error: justfile argument is required!"; \
+      exit 1; \
+    fi
+    uv run {{ jm }} compare_justfile --db_path {{ db }} --justfile_path {{ justfile }}

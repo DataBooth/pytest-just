@@ -1,0 +1,47 @@
+# https://just.systems/
+
+# import './docker.just'
+
+default:
+  @just --list
+
+ssh:
+    #!/usr/bin/env bash
+    ssh michael.grn@au.globalrecordings.net
+
+
+scp_here filepath:
+    #!/usr/bin/env bash
+    echo "scp -r michael.grn@au.globalrecordings.net:"{{filepath}} .
+    scp -r -C michael.grn@au.globalrecordings.net:{{filepath}} .
+
+scp_there filepath remote_directory:
+    #!/usr/bin/env bash
+    echo "scp -r -C {{filepath}} michael.grn@au.globalrecordings.net:{{remote_directory}}"
+    scp -r -C {{filepath}} michael.grn@au.globalrecordings.net:{{remote_directory}}
+    
+zip-report report_html:
+    #!/usr/bin/env bash
+    zip -er report.zip {{report_html}}
+
+set_ducklit_config_env:
+    #!/usr/bin/env bash
+    export DUCKLIT_CONFIG_PATH=$PWD/grn_ducklit.toml
+
+get-grn-logs local_directory:
+    #!/usr/bin/env bash
+    mkdir -p {{local_directory}}
+    time gsutil -m cp -r gs://grn-media-logs/archive2 {{local_directory}}
+
+
+# Activate service account credentials for gcloud/gsutil cmd line
+# gcloud auth activate-service # https://stackoverflow.com/questions/12433639/how-to-use-service-accounts-with-gsutil-for-uploading-to-cs-bigquery
+
+
+#TODO: Add gsutil command
+# gsutil -m cp -r gs://my-bucket/remoteDirectory localDirectory
+# https://stackoverflow.com/questions/39137053/how-to-download-multiple-files-in-google-cloud-storage
+
+# This seems to be going to take ~15 mins for 35k files!
+
+# e.g. 9 Feb 2024 - 15 minutes for 35k files => 3 mins - 7k or    2,500 files / minute roughly

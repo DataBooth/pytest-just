@@ -1,0 +1,41 @@
+default:
+  @just --list
+
+
+update-st-config:
+    streamlit config show > .streamlit/config.toml
+
+app app_name="app/main.py":
+    streamlit run {{app_name}} --server.address=localhost
+
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod
+
+# # Docker
+
+# dbuild:
+#     docker build -t {{image_name}}:{{tag}} -f {{dockerfile}} {{build_context}}
+
+# drun:
+#     docker run --name {{container_name}} -p {{host_port}}:{{container_port}} -d {{image_name}}:{{tag}}
+
+# drun_main:
+#     docker run --name {{container_name}} -e ACTIVE_APP=src/main.py -p {{host_port}}:{{container_port}} -d {{image_name}}:{{tag}}
+
+# dstop:
+#     docker stop {{container_name}}
+
+# dremove:
+#     docker rm {{container_name}}
+
+# dlogs:
+#     docker logs {{container_name}}
+
+# dshell:
+#     docker exec -it {{container_name}} /bin/sh
+
+# dpush:
+#     docker push {{image_name}}:{{tag}}
+
+# dpull:
+#     docker pull {{image_name}}:{{tag}}

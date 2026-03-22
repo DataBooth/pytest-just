@@ -1,0 +1,11 @@
+# List all just recipes
+default:
+  @just --list
+
+# Export requirements.txt from pyproject.toml using PDM
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod
+
+# Install the pre-commit tool (pdm add -dG tools pre-commit)
+pre-commit:
+    pre-commit install

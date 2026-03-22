@@ -1,0 +1,6 @@
+default:
+  @just --list
+
+
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod

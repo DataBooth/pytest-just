@@ -1,0 +1,29 @@
+# Default recipe to show available commands OUTPUT: console
+default:
+    @just --list
+
+# Backup dotfiles - Create a zip archive of all dotfiles in the home directory OUTPUT: file
+backup-dotfiles:
+    @./backup_dotfiles.sh
+
+# List Homebrew packages - Display installed Homebrew formulae and casks, generate Brewfile OUTPUT: both
+brew-packages:
+    @./brew_packages.sh
+
+# List SSH keys - Display a list of installed SSH keys (private keys only) OUTPUT: console
+list-ssh-keys:
+    @./list_ssh_keys.sh
+
+# Show macOS information - Display system info and installed applications OUTPUT: console
+macos-info:
+    @./macos_info.sh
+
+# List VS Code extensions - Show installed VS Code extensions with versions OUTPUT: console
+vscode-extensions:
+    @./vscode_extensions.sh
+
+# Full backup - Run all backup and info gathering tasks OUTPUT: none
+full-backup: backup-dotfiles brew-packages list-ssh-keys macos-info vscode-extensions
+    @echo "Full backup and system info gathering complete."
+
+

@@ -1,0 +1,87 @@
+# llm-time-variance
+# Cross-platform recipes (macOS, Windows, Linux).
+
+# Sampling defaults (override with `just --set <name> <value> ...`).
+# Example: `just --set n 1000 --set mode allow sample llama3.1:8b`
+question := "How do you feel about the article above?"
+n := "200"
+mode := "allow"
+temperature := "0.8"
+top_p := "0.95"
+max_output_tokens := "400"
+concurrency := "1"
+
+# Bootstrap defaults
+bootstrap_samples := "3"
+
+default:
+  @just --list
+
+# Python environment
+sync:
+  uv sync
+
+# Source freezing
+fetch url:
+  uv run ltv fetch --url "{{url}}"
+
+# Ollama convenience
+# Open the Ollama app on macOS (best-effort). On other platforms, prints a note.
+ollama-start:
+  {{ if os() == "macos" { "open -a Ollama" } else { "ollama serve" } }}
+
+# Start the Ollama server in the foreground (blocks).
+ollama-serve:
+  ollama serve
+
+# Quick health check against the local Ollama HTTP API.
+ollama-health base_url='http://localhost:11434':
+  uv run python -c "import httpx; url='{{base_url}}/api/tags'; r=httpx.get(url, timeout=2.0); r.raise_for_status(); print('OK', url)"
+
+# Wait for Ollama to become healthy.
+ollama-wait base_url='http://localhost:11434' timeout_s='60':
+  uv run python -m llm_time_variance.ollama wait --base-url "{{base_url}}" --timeout-s {{timeout_s}}
+
+pull model:
+  ollama pull "{{model}}"
+
+# One-shot bootstrap: ensure dependencies, ensure Ollama is running, pull a model, freeze the source URL, then sample.
+# Example:
+#   just bootstrap llama3.1:8b
+#   just --set bootstrap_samples 10 bootstrap llama3.1:8b
+bootstrap model url='https://honnibal.dev/blog/suffering':
+  uv sync
+  just ollama-start
+  just ollama-wait
+  just pull "{{model}}"
+  just fetch "{{url}}"
+  uv run ltv sample --model "{{model}}" -n {{bootstrap_samples}} --mode {{mode}} --question "{{question}}" --temperature {{temperature}} --top-p {{top_p}} --max-output-tokens {{max_output_tokens}} --concurrency {{concurrency}}
+
+# Sampling
+# Examples:
+#   just sample llama3.1:8b
+#   just --set n 1000 --set mode allow --set temperature 0.9 --set concurrency 2 sample llama3.1:8b
+sample model:
+  uv run ltv sample --model "{{model}}" -n {{n}} --mode {{mode}} --question "{{question}}" --temperature {{temperature}} --top-p {{top_p}} --max-output-tokens {{max_output_tokens}} --concurrency {{concurrency}}
+
+# Like `sample`, but lets you set a stable output path.
+sample-to model out:
+  uv run ltv sample --model "{{model}}" -n {{n}} --mode {{mode}} --question "{{question}}" --temperature {{temperature}} --top-p {{top_p}} --max-output-tokens {{max_output_tokens}} --concurrency {{concurrency}} --out "{{out}}"
+
+# Analysis
+analyse runs:
+  uv run ltv analyse --runs "{{runs}}"
+
+# Render a user-friendly report.
+report runs examples='5':
+  uv run ltv report --runs "{{runs}}" --examples {{examples}}
+
+# Render a report with wrapped rationale text.
+# Example:
+#   just report-pretty runs/runs-YYYY.jsonl
+report-pretty runs examples='5' width='88':
+  uv run ltv report --runs "{{runs}}" --examples {{examples}} --pretty-rationale --rationale-width {{width}}
+
+# Narrative summary based on computed stats (temperature=0)
+summarise runs model:
+  uv run ltv summarise --runs "{{runs}}" --model "{{model}}"

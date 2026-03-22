@@ -1,0 +1,34 @@
+set positional-arguments
+
+default:
+  @just --list
+
+install:
+  uv sync
+
+test:
+  uv run pytest -q
+
+run-safe batch_size='300' chunk_days='7':
+  uv run enrich_photos.py run --batch-size {{batch_size}} --no-snapshot --no-include-labels --no-include-extended-metadata --date-chunk-days {{chunk_days}}
+
+run-full batch_size='1000' chunk_days='30':
+  uv run enrich_photos.py run --batch-size {{batch_size}} --no-snapshot --include-labels --include-extended-metadata --date-chunk-days {{chunk_days}}
+
+people:
+  uv run enrich_photos.py people --as-json
+
+timeline person='Emmeline':
+  uv run enrich_photos.py timeline --person-name {{person}} --as-json
+
+keyword person='Emmeline' term='sing' media='both' limit='200':
+  uv run enrich_photos.py person-keyword --person-name {{person}} --keyword {{term}} --media-type {{media}} --limit {{limit}} --as-json
+
+review-export person='Emmeline' media='both' limit='5000' csv='reports/emmeline_review.csv' html='reports/emmeline_review.html':
+  uv run enrich_photos.py review-export --person-name {{person}} --media-type {{media}} --limit {{limit}} --output-csv {{csv}} --output-html {{html}}
+
+cluster uuid minutes='45' limit='200':
+  uv run enrich_photos.py cluster-around --uuid {{uuid}} --minutes-window {{minutes}} --limit {{limit}} --as-json
+
+web-ui host='127.0.0.1' port='8787':
+  uv run enrich_photos.py web-ui --host {{host}} --port {{port}}

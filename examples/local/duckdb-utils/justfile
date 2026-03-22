@@ -1,0 +1,30 @@
+# Run tests and linters
+@default: test lint
+
+# Setup project
+@init:
+  pdm run pip install -e '.[test,docs,mypy,flake8]'
+
+# Run pytest with supplied options
+@test *options:
+  pdm run pytest {{options}}
+
+# Run linters: black, flake8, mypy, cog
+@lint:
+  pdm run black . --check
+  pdm run flake8
+  pdm run mypy duckdb_utils tests
+  pdm run cog --check README.md docs/*.rst
+  pdm run codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt
+
+# Rebuild docs with cog
+@cog:
+  pdm run cog -r README.md docs/*.rst
+
+# Serve live docs on localhost:8000
+@docs: cog
+  cd docs && pdm run make livehtml
+
+# Apply Black
+@black:
+  pdm run black .

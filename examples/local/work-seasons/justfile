@@ -1,0 +1,100 @@
+# Example of remote deployment configuration (ChemiCloud)
+# USER := "databoot"
+# HOST := "rs4-syd.serverhostgroup.com"
+# DIR := "/home/databoot/public_html"
+# PORT := "1988"
+ZOLA_DIR := "work-seasons-site" 
+
+## Core Recipes
+
+### Setup
+
+# List available recipes
+default:
+    @just --list
+
+# Get Zola version (brew installed)
+version:
+    @zola --version
+
+### Standard Workflow
+
+# Build the site (from Zola project root)
+[no-cd]
+build:
+    cd {{ZOLA_DIR}} && zola build
+
+# Serve the site locally with live reloading (from Zola project root)
+[no-cd]
+serve: build
+    cd {{ZOLA_DIR}} && zola serve
+
+# Check the site for broken links and other issues
+[no-cd]
+check:
+    cd {{ZOLA_DIR}} && zola check
+
+# Clean the public directory
+clean:
+    rm -rf {{ZOLA_DIR}}/public
+
+## Deployment Recipes
+
+### Manual GitHub Pages Deployment - NOTE: See also `.github/workflows/zola-publish-gh-pages.yml`
+
+# Deploy Zola site to GitHub Pages (for testing)
+[no-cd]
+deploy-gh-pages:
+    @echo "Building Zola site..."
+    cd {{ZOLA_DIR}} && zola build
+
+    @echo "Stashing uncommitted changes..."
+    git stash --include-untracked
+
+    @echo "Switching to gh-pages branch..."
+    git checkout gh-pages || git checkout --orphan gh-pages
+
+    @echo "Removing old files..."
+    if [ -n "$(ls -A . 2>/dev/null)" ]; then git rm -rf . && git clean -fd; else echo "No files to remove"; fi
+
+    @echo "Checking out {{ZOLA_DIR}}/public from main branch..."
+    git checkout main -- {{ZOLA_DIR}}/public
+
+    @echo "Moving content to root..."
+    mv {{ZOLA_DIR}}/public/* . || echo "No files to move"
+    rm -rf {{ZOLA_DIR}}
+
+    @echo "Adding all changes to git..."
+    git add .
+
+    @echo "Committing changes..."
+    git commit -m "Deploy site update $(date)" || echo "No changes to commit"
+
+    @echo "Pushing to GitHub..."
+    git push origin gh-pages --force
+
+    @echo "Switching back to main branch..."
+    git checkout main
+
+    @echo "Restoring stashed changes (if any)..."
+    git stash pop || echo "No stash to pop"
+
+    @echo "Deployment complete!"
+
+# Clean up gh-pages branch
+clean-gh-pages:
+    @echo "Cleaning gh-pages branch..."
+    git checkout gh-pages
+    git rm -rf .
+    git clean -fd
+    git commit -m "Clean gh-pages branch"
+    git push origin gh-pages --force
+    git checkout main
+    @echo "gh-pages branch cleaned!"
+
+# Update main branch and redeploy to GitHub Pages
+update-and-deploy:
+    @echo "Updating main branch..."
+    git checkout main
+    git pull origin main
+    @just deploy-gh-pages

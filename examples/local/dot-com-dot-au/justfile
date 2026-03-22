@@ -1,0 +1,168 @@
+# This justfle defines several tasks for deploying, rebuilding, serving, and creating new content for a Hugo website. 
+#
+# Tasks:
+# - default lists all available tasks when running 'just --list'.
+# - deploy checks if the current directory is the same as the Hugo directory. If not, it changes to the Hugo directory. It builds the site with Hugo and then uses SCP to copy the generated files to the remote server.
+# - rebuild checks if the current directory is the same as the Hugo directory. If not, it changes to the Hugo directory. It rebuilds the site with Hugo.
+# - serve task checks if the current directory is the same as the Hugo directory. If not, it changes to the Hugo directory. It starts a local Hugo server with verbose output and disables fast rendering.
+# - new_features `md_file` task checks if the current directory is the same as the Hugo directory. If not, it changes to the Hugo directory. It creates a new content markdown file in the `features` directory.
+# - view opens the local Hugo server in a web browser.
+#
+# Variable definitions:
+# - `USER`: The username for the remote server.
+# - `HOST`: The hostname of the remote server.
+# - `DIR`: The directory on the remote server where the website will be deployed.
+# - `PORT`: The port number for the SSH connection to the remote server.
+# - `HUGO_DIR`: The local directory where the Hugo website is located.
+
+# Define variables
+
+USER := "databoot"
+HOST := "rs2-syd.serverhostgroup.com"
+DIR := "/home/databoot/public_html"
+PORT := "1988"
+HUGO_DIR := "hugo/databooth-paradigm"
+
+# Tasks
+
+# List the available tasks
+default:
+    @just --list
+
+# Rebuild the site with Hugo
+rebuild:
+    cd {{HUGO_DIR}} && hugo --cleanDestinationDir
+
+# Start a local Hugo server
+serve: rebuild
+    cd {{HUGO_DIR}} && hugo server --disableFastRender &
+
+# Create new type e.g. `pages`, `features`, `posts` markdown content (with specified filename)
+new content_type md_file:
+    cd {{HUGO_DIR}} && hugo new content/{{content_type}}/{{md_file}}
+
+# Open a browser to view the local version of the website
+view: stop_all serve 
+    open http://localhost:1313
+
+# Build and deploy to remote host (ChemiCloud) via SCP (add -v if verbose output required)
+deploy:
+    cd {{HUGO_DIR}} && hugo && scp -rp -P {{PORT}} public/. {{USER}}@{{HOST}}:{{DIR}}
+
+# Deploy a specific `filepath` to remote host (ChemiCloud) via SCP 
+deploy-filepath-only file_path:
+    scp -rp -P {{PORT}} {{file_path}} {{USER}}@{{HOST}}:{{DIR}}
+
+
+backup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    BACKUP_DATE=$(date +"%Y-%m-%d")
+    REMOTE_DIR_NAME=$(basename {{DIR}})
+    BACKUP_DIR="{{HUGO_DIR}}/backups/${REMOTE_DIR_NAME}_$BACKUP_DATE"
+    mkdir -p "$BACKUP_DIR"
+    scp -rp -P {{PORT}} {{USER}}@{{HOST}}:{{DIR}}/* "$BACKUP_DIR"
+    echo "Backup completed to $BACKUP_DIR"
+
+# SSH to ChemiCloud
+ssh:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ssh -p {{PORT}} {{USER}}@{{HOST}}
+
+# SSH to ChemiCloud (verbose)
+ssh-verbose:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ssh -v -p {{PORT}} {{USER}}@{{HOST}}
+
+# Kill any hugo processes that are running
+stop_all:
+    @if pgrep hugo > /dev/null; then \
+        killall hugo; \
+    else \
+        echo "No process found"; \
+    fi
+
+# Return the version of Hugo
+version:
+    hugo version
+
+# Clear the Hugo module cache for the current project & rm publish directory
+clean:
+    cd {{HUGO_DIR}} && hugo mod clean --all && rm -rf hugo/databooth-paradigm/publish
+
+# Run a pre-deploy check for common issues
+pre_deploy_check:
+    cd {{HUGO_DIR}} && HUGO_MINIFY_TDEWOLFF_HTML_KEEPCOMMENTS=true HUGO_ENABLEMISSINGTRANSLATIONPLACEHOLDERS=true hugo && grep -inorE "<\!-- raw HTML omitted -->|ZgotmplZ|\[i18n\]|\(<nil>\)|(&lt;nil&gt;)|hahahugo" public/
+
+# Manim
+
+manim py_file class_name:
+    manim -pql manim/{{py_file}} {{class_name}}
+
+
+start-ssh ssh_key="~/.ssh/id_ed25519_chemicloud":
+    eval "$(ssh-agent -s)"
+    # chmod 600 {{ssh_key}}
+    ssh-add --apple-use-keychain {{ssh_key}}
+
+
+# Check if SSH agent is running
+check-ssh-agent:
+    #!/usr/bin/env sh
+    if [ -n "$SSH_AGENT_PID" ]; then
+        ps -p $SSH_AGENT_PID > /dev/null
+        if [ $? -eq 0 ]; then
+            echo "SSH agent is running (PID: $SSH_AGENT_PID)"
+            exit 0
+        else
+            echo "SSH agent is not running (stale PID: $SSH_AGENT_PID)"
+            exit 1
+        fi
+    elif [ -n "$SSH_AUTH_SOCK" ]; then
+        echo "SSH agent is running (socket: $SSH_AUTH_SOCK)"
+        exit 0
+    else
+        echo "SSH agent is not running"
+        exit 1
+    fi
+
+# Start SSH agent if not running and add the key
+start-ssh-agent ssh_key="~/.ssh/id_ed25519_chemicloud": check-ssh-agent
+    #!/usr/bin/env sh
+    if [ $? -ne 0 ]; then
+        echo "Starting SSH agent..."
+        eval "$(ssh-agent -s)"
+    fi
+    
+    echo "Checking for existing keys:"
+    ssh-add -l
+    
+    key_fingerprint=$(ssh-keygen -lf {{ssh_key}} | awk '{print $2}')
+    if ssh-add -l | grep -q "$key_fingerprint"; then
+        echo "SSH key {{ssh_key}} is already added to the agent."
+    else
+        echo "Adding SSH key {{ssh_key}} to the agent..."
+        # chmod 600 {{ssh_key}}
+        ssh-add --apple-use-keychain {{ssh_key}}
+        echo "Added SSH key: {{ssh_key}}"
+    fi
+
+
+# Extract PDM dependencies from pyproject.toml files
+extract-python-dependencies start_dir="~/code":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Ensure the Python script exists
+    if [ ! -f "extract_python_dependencies.py" ]; then
+        echo "Error: extract_python_dependencies.py not found in the current directory."
+        exit 1
+    fi
+    
+    # Expand the tilde in the start directory path
+    expanded_dir=$(eval echo {{start_dir}})
+    
+    # Run the Python script with the specified start directory
+    python extract_python_dependencies.py "$expanded_dir"

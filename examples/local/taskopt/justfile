@@ -1,0 +1,22 @@
+# Default
+default:
+    @just --list
+# Lint the codebase with ruff
+lint:
+    uv run ruff check src/ tests/
+
+# Run tests with pytest
+test:
+    uv run pytest tests/
+
+# Run CLI for testing
+run-cli:
+    uv run python src/taskopt/cli.py --help
+
+# Run web app
+run-web:
+    uv run streamlit run web.py
+
+# Build package (optional executable later)
+build:
+    uv build

@@ -1,0 +1,204 @@
+# List the available just recipes (https://just.systems)
+# What it is: A list of all available Just recipes in this file.
+# What it does: Runs just --list to display recipes for quick reference.
+# How to use in new build: Run just default to see available commands; helps navigate the Justfile on the new Mac.
+default:
+    @just --list
+
+# List the brew installs (both casks and non-casks)
+# What it is: Lists installed Homebrew formulas and casks with versions.
+# What it does: Runs brew list --versions for casks and formulas.
+# How to use in new build: Install Homebrew first (via /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"), then brew install <formula> or brew install --cask <cask> for each listed item.
+brew-list:
+    brew list --versions --casks
+    echo
+    brew list --versions --formula
+    echo
+
+# Show the tree representation (default depth of 4) for the specified directory
+# What it is: Directory tree view for a given path, up to specified levels.
+# What it does: Uses tree command to visualize folder structure.
+# How to use in new build: Run just show-tree <dir> <level> to inspect transferred dirs; verify structure matches old Mac.
+show-tree directory level="4":
+    cd {{directory}} && tree -d -L {{level}}
+
+# Get local code repo list
+# What it is: Tree view of code repositories in ~/code.
+# What it does: Shows 3-level deep tree of code dir.
+# How to use in new build: After cloning repos from GitHub, run this to confirm structure; git clone <repo> into ~/code for each listed.
+local-code-repo-list:
+    cd /Users/mjboothaus/code && tree -d -L 3
+    echo
+
+# Get local code repo list
+# What it is: Tree view of data repositories in ~/data and iCloud Data.
+# What it does: Shows 3-level deep trees for data dirs.
+# How to use in new build: Manually copy or sync data dirs via iCloud/rsync; run this post-transfer to verify contents match.
+local-data-repo-list:
+    cd /Users/mjboothaus/data && tree -d -L 3
+    echo
+    cd /Users/mjboothaus/icloud/Data && tree -d -L 3
+    echo
+
+# Get macOS simple version info
+# What it is: Basic macOS version and date info.
+# What it does: Runs sw_vers and date for system baseline.
+# How to use in new build: Run on new Mac to compare versions; update via System Settings if needed for compatibility.
+macos-info:
+    date
+    sw_vers # Could use following for more info: system_profiler SPSoftwareDataType
+    echo
+
+# macOS info and installed applications
+# What it is: macOS info plus list of installed apps in /Applications.
+# What it does: Calls macos-info and trees /Applications.
+# How to use in new build: Avoid reinstalling all apps; use brew-list instead for Homebrew-managed ones; manually install others if needed.
+macos-installs: macos-info
+    tree /Applications -d -L 1
+    echo
+
+# Get a list of VS Code extensions
+# What it is: List of installed VS Code extensions with versions.
+# What it does: Runs code --list-extensions --show-versions.
+# How to use in new build: Install VS Code via brew install --cask visual-studio-code, then code --install-extension <ext>@<version> for each.
+vscode-extensions:
+    code --list-extensions --show-versions
+    echo
+
+# Get the serial number of the MacBook
+# What it is: MacBook serial number.
+# What it does: Extracts from system_profiler.
+# How to use in new build: Run on new Mac to note new serial; useful for warranties or inventory.
+get-macbook-serial-number2:
+    system_profiler SPHardwareDataType | awk '/Serial Number/{print $4}'
+    echo
+
+# Create a zip archive as a backup of all dotfiles in home directory
+# What it is: Zip archive of home dir dotfiles (excluding .DS_Store).
+# What it does: Finds and zips dotfiles to iCloud backup dir.
+# How to use in new build: Untar/unzip to ~ on new Mac, then selectively copy (e.g., cp .bashrc ~); or use a dotfiles Git repo for versioning.
+backup-dotfiles:
+    #!/bin/bash
+    # Define the backup directory and the backup file name
+    backup_dir="$HOME/icloud/backup"
+    backup_file="dotfiles_backup_$(date +%Y%m%d_%H%M%S).zip"
+    # Create the backup directory if it doesnt exist
+    mkdir -p "$backup_dir"
+    # Find all dot files in the home directory and zip them
+    find $HOME -maxdepth 1 -name ".*" -type f -not -name ".DS_Store" | zip "$backup_dir/$backup_file" -@ -x "*.DS_Store"
+    # Echo the location of the backup file
+    echo "Backup created at $backup_dir/$backup_file"
+
+# Enhanced: Get uv-specific information (Python tooling and environments)
+# What it is: Lists uv version and installed tools (e.g., global scripts like jupyter).
+# What it does: Runs uv commands to show core setup without project details.
+# How to use in new build: Install uv via curl (curl -LsSf https://astral.sh/uv/install.sh | sh), then uv tool install <tool> for each listed.
+uv-info:
+    uv --version
+    uv tool list
+    echo
+
+# Get development tools versions
+# What it is: Versions of key dev tools like Node, Rust, Docker.
+# What it does: Checks --version for each, or notes if not installed.
+# How to use in new build: Install via managers (e.g., brew install node, rustup-init for Rust, brew install --cask docker) matching versions.
+dev-tools-versions:
+    echo "Development tools versions:"
+    node --version 2>/dev/null || echo "Node not installed"
+    cargo --version 2>/dev/null || echo "Rust not installed"
+    docker --version 2>/dev/null || echo "Docker not installed"
+    echo
+
+# Get Homebrew taps (custom sources)
+# What it is: List of added Homebrew taps.
+# What it does: Runs brew tap to show custom repositories.
+# How to use in new build: After installing Homebrew, run brew tap <tap> for each to enable custom formulas.
+brew-taps:
+    brew tap
+    echo
+
+# Get Git configuration
+# What it is: Full Git config with origins.
+# What it does: Runs git config --list --show-origin.
+# How to use in new build: Run git config --global <key> <value> for each global setting; local ones per-repo after cloning.
+git-config:
+    git config --list --show-origin
+    echo
+
+# Recipe for creating a (minimal) set of backup info
+# What it is: Compiled output of all key info recipes.
+# What it does: Calls multiple recipes to aggregate system/tool info.
+# How to use in new build: Run just backup-info > new-backup.txt on new Mac; diff against old TXT to verify setup completeness.
+backup-info: get-macbook-serial-number2 macos-installs brew-list brew-taps local-code-repo-list vscode-extensions list-hidden uv-info dev-tools-versions git-config backup-ssh-gpg ds-configs macos-defaults
+
+# Output the backup info to iCloud drive
+# What it is: Writes backup-info output to a TXT file in iCloud.
+# What it does: Redirects backup-info to file with optional name.
+# How to use in new build: Run just output-backup-info new-backup.txt post-setup; use as audit log.
+output-backup-info backup_info_file="backup-info.txt":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    output_file="/Users/mjboothaus/icloud/backup/{{backup_info_file}}"
+    echo "Generating backup info..."
+    just backup-info > "$output_file"
+    echo "Backup info written to $output_file"
+
+# List hidden directories and their contents, sorted alphabetically (see also backup-dotfiles)
+# What it is: Sorted list of dot dirs and their contents.
+# What it does: Loops through ~/.* dirs, lists contents sorted.
+# How to use in new build: Run post-dotfile restore to inspect; manually adjust if any conflicts.
+list-hidden:
+    #!/usr/bin/env bash
+    echo "Generating list of hidden (dot) directories..."
+    echo
+    for dir in $(ls -d ~/.* | sort | grep -v '\.Trash$'); do
+        if [ -d "$dir" ]; then
+            echo "$dir:"
+            ls -lta "$dir" | sort -k9
+            echo
+        fi
+    done
+
+# New: Backup SSH keys and GPG (exclude sensitive privates; copy manually if needed)
+# What it is: Compressed archive of ~/.ssh and ~/.gnupg dirs.
+# What it does: Tars these security dirs to iCloud for safe transfer.
+# How to use in new build: Untar to ~ on new Mac, then chmod 600 ~/.ssh/id_* for privates; test with ssh -T git@github.com.
+backup-ssh-gpg:
+    #!/usr/bin/env bash
+    backup_dir="$HOME/icloud/backup"
+    mkdir -p "$backup_dir"
+    tar -czf "$backup_dir/ssh-gpg-backup_$(date +%Y%m%d_%H%M%S).tar.gz" -C ~ .ssh .gnupg 2>/dev/null || echo "No SSH/GPG found"
+    echo "Backup at $backup_dir (review/exclude privates before restore)"
+
+# New: List DS-specific configs (Jupyter, R, etc.)
+# What it is: Directory listings for common data science config paths.
+# What it does: Checks for Jupyter/IPython/R configs and a top-level iCloud tree.
+# How to use in new build: Manually copy listed files (e.g., cp -r ~/.jupyter ~new/.jupyter), or recreate via tools (e.g., jupyter notebook --generate-config).
+ds-configs:
+    echo "Jupyter/IPy config:"
+    ls -la ~/.jupyter ~/.ipython 2>/dev/null || echo "None found"
+    echo "R config:"
+    ls -la ~/.R 2>/dev/null || echo "None found"
+    echo "iCloud Drive full tree (top-level):"
+    tree -d -L 2 ~/Library/Mobile\ Documents/com~apple~CloudDocs 2>/dev/null || echo "No iCloud"
+
+# New: Export macOS defaults for quick reapply
+# What it is: PLIST files for key system preferences (global, Finder, Dock).
+# What it does: Exports defaults to iCloud backup dir.
+# How to use in new build: Copy PLISTs to new Mac, then run defaults import com.apple.finder ~/icloud/backup/defaults/Finder.plist; killall Finder to apply.
+macos-defaults:
+    mkdir -p ~/icloud/backup/defaults
+    defaults export .GlobalPreferences ~/icloud/backup/defaults/GlobalPreferences.plist
+    defaults export com.apple.finder ~/icloud/backup/defaults/Finder.plist
+    defaults export com.apple.dock ~/icloud/backup/defaults/Dock.plist
+    echo "Defaults exported to ~/icloud/backup/defaults (reapply with: defaults import ...)"
+
+# New: Validate backup (counts/sizes for key dirs)
+# What it is: Summary stats for code/data/dotfiles to verify completeness.
+# What it does: Counts Git repos, sizes data dirs, counts dotfiles, and checks backup TXT.
+# How to use in new build: Run on new Mac post-transfer; compare to old output to confirm nothing's missing (e.g., if code repo count matches, all cloned successfully).
+validate-backup:
+    echo "Code repos: $(find ~/code -type d -name .git | wc -l)"
+    echo "Data files size: $(du -sh ~/data ~/icloud/Data 2>/dev/null || echo 'N/A')"
+    echo "Dotfiles count: $(find ~ -maxdepth 1 -name '.*' -type f | wc -l)"
+    echo "Backup TXT size: $(wc -l < ~/icloud/backup/backup-info.txt)"

@@ -1,0 +1,23 @@
+# Default list recipes
+default:
+    @just --list
+
+# Setup the database (schema + import tasks.csv)
+setup-db:
+    python scripts/setup_db.py
+
+# Convert tasks.txt to tasks.csv using plot_tasks.py (if you add export logic)
+txt-to-csv:
+    python -c "from taskdb.plot_tasks import import_tasks; import csv; tasks = import_tasks('data/tasks.txt'); csvfile = open('data/tasks.csv', 'w', newline='', encoding='utf-8'); writer = csv.DictWriter(csvfile, fieldnames=['name','urgency','importance','deadline','status','details']); writer.writeheader(); [writer.writerow({**t, 'status': 'todo', 'details': '; '.join(t['details'])}) for t in tasks]; csvfile.close()"
+
+# Run the Streamlit app
+app:
+    streamlit run app/main.py
+
+# Show config debug print
+show-config:
+    python -c "from taskdb.config import ProjectConfig; c = ProjectConfig(conf_dir='conf'); c.debug_print()"
+
+# Clean the database file
+clean-db:
+    rm -f data/tasks.duckdb

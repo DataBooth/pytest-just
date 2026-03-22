@@ -21,6 +21,10 @@ build/
 .coverage
 htmlcov/
 
+# Generated artifacts
+examples/recipes.duckdb
+logs/
+
 # Editors / OS
 .DS_Store
 .idea/

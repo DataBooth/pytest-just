@@ -1,0 +1,7 @@
+# Default list recipe
+default:
+    @just --list
+
+# Run the main CLI
+cli:
+    uv run src/super_plan/cli.py

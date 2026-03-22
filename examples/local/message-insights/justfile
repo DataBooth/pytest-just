@@ -1,0 +1,35 @@
+# List all just recipes
+default:
+  @just --list
+
+
+# Copy ~/Library/Messages/chat.db to local data directory
+copy-chat-db:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Create data directory if it doesnt exist
+    mkdir -p ./data
+    
+    # Source path of chat.db
+    SRC_PATH="$HOME/Library/Messages/chat.db"
+    
+    # Destination path in the local data directory
+    DEST_PATH="./data/chat_copy.db"
+    
+    # Check if source file exists
+    if [ ! -f "$SRC_PATH" ]; then
+        echo "Error: chat.db not found at $SRC_PATH"
+        exit 1
+    fi
+    
+    # Copy the file with sudo to ensure permissions
+    sudo cp "$SRC_PATH" "$DEST_PATH"
+    
+    # Change ownership to the current user
+    sudo chown $(id -u):$(id -g) "$DEST_PATH"
+    
+    # Set read-only permissions for the owner
+    chmod 400 "$DEST_PATH"
+    
+    echo "chat.db copied to $DEST_PATH with read-only permissions"

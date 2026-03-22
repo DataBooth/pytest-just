@@ -1,0 +1,43 @@
+default:
+    @just --list
+
+
+duckdb-release:
+    #!/usr/bin/env bash
+    if [ -f ./build/release/duckdb ] && [ -x ./build/release/duckdb ]; then
+      ./build/release/duckdb
+    else
+      echo "duckdb binary not found or not executable"
+      exit 1
+    fi
+
+make-fast:
+    GEN=ninja make
+
+make:
+    make
+    
+tests:
+    make test
+
+# Install required tools
+install-tools:
+    uv tool install healthkit-to-sqlite
+
+# Data Analysis Recipes
+
+# Create a sample dataset from an Apple Health export
+create-sample export_file size="1000" out="data/sample_export.zip":
+    mkdir -p data
+    uv run scripts/create_sample_data.py {{export_file}} {{out}} --num-records {{size}}
+
+# Compare DuckDB output with healthkit-to-sqlite
+compare-outputs export_file="data/sample_export.zip":
+    healthkit-to-sqlite {{export_file}} healthkit.db
+    duckdb -init scripts/compare_outputs.sql
+    rm healthkit.db
+
+# Run analysis on sample data
+analyze-sample file="data/sample_export.zip":
+    duckdb -init scripts/analyze_sample.sql
+

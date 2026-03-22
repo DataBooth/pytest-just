@@ -1,0 +1,166 @@
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
+# List the available tasks
+default:
+    @just --list
+
+# Export requirements.txt
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod
+
+# Replace US spellings with Australian spellings in the specified file
+us_to_au_spelling file:
+    #!/usr/bin/env bash
+    if [ ! -f "{{file}}" ]; then
+        echo "File {{file}} not found!"
+        exit 1
+    fi
+
+    # Create a temporary file
+    temp_file=$(mktemp)
+
+    # Function to apply replacements
+    apply_replacement() {
+        pattern="$1"
+        replacement="$2"
+        count=$(grep -Eo "$pattern" "{{file}}" | wc -l | tr -d '[:space:]')
+        if [ "$count" -gt 0 ]; then
+            echo "Replacing $pattern with $replacement ($count occurrences)"
+            sed -E "s/$pattern/$replacement/g" "{{file}}" > "$temp_file"
+            mv "$temp_file" "{{file}}"
+        fi
+    }
+
+    # Specific word replacements
+    declare -A replacements=(
+        ["color"]="colour"
+        ["favor"]="favour"
+        ["labor"]="labour"
+        ["neighbor"]="neighbour"
+        ["center"]="centre"
+        ["defense"]="defence"
+        ["license"]="licence"
+        ["practice"]="practise"
+        ["catalog"]="catalogue"
+        ["dialog"]="dialogue"
+        ["program"]="programme"
+    )
+
+    for us in "${!replacements[@]}"; do
+        au=${replacements[$us]}
+        apply_replacement "\\b$us\\b" "$au"
+    done
+
+    # Handle -ize, -yze, -ization endings (including variations)
+    apply_replacement "([a-zA-Z])ize(d|s)?\\b" "\\1ise\\2"
+    apply_replacement "([a-zA-Z])yze(d|s)?\\b" "\\1yse\\2"
+    apply_replacement "([a-zA-Z])ization(s)?\\b" "\\1isation\\2"
+
+    # Handle specific cases that might be missed
+    apply_replacement "\\bcentral(ized|ize|ization)\\b" "central\\1"
+    apply_replacement "\\bpersonal(ized|ize|ization)\\b" "personal\\1"
+    apply_replacement "\\banalyze(d|s)?\\b" "analyse\\1"
+
+    echo "US to AU spelling replacements completed in {{file}}"
+
+
+# Format reference lists in the specified file and report the number of references per section
+format_references file:
+    #!/usr/bin/env bash
+    if [ ! -f "{{file}}" ]; then
+        echo "File {{file}} not found!"
+        exit 1
+    fi
+
+    # Replace "Citations:" with "References:" and add hyphens before references
+    awk '
+    BEGIN { total = 0; section = 0 }
+    /^Citations:/ { 
+        print "References:"
+        section++
+        count = 0
+        next
+    }
+    /^\[[0-9]+\]/ {
+        sub(/^/, "- ")
+        count++
+        total++
+    }
+    { print }
+    END {
+        print "References in section " section ": " count > "/dev/stderr"
+        print "Total number of reference sections: " section > "/dev/stderr"
+        print "Total number of references formatted: " total > "/dev/stderr"
+    }
+    ' "{{file}}" > "{{file}}.tmp"
+
+    # Check if any changes were made
+    if cmp -s "{{file}}" "{{file}}.tmp"; then
+        echo "No changes were necessary in {{file}}"
+        rm "{{file}}.tmp"
+    else
+        mv "{{file}}.tmp" "{{file}}"
+        echo "Reference list formatting completed in {{file}}"
+    fi
+
+# Combined recipe to fix Markdown files
+fix_md file:
+    @echo "Fixing Markdown file: {{file}}"
+    @echo "Step 1: Formatting references"
+    @just format_references "{{file}}"
+    @echo "Step 2: Converting US spellings to AU spellings"
+    @just us_to_au_spelling "{{file}}"
+    @echo "Markdown file fixing completed: {{file}}"
+
+
+# Scan for potential remaining US spellings
+scan_us_spellings file:
+    #!/usr/bin/env bash
+    if [ ! -f "{{file}}" ]; then
+        echo "File {{file}} not found!"
+        exit 1
+    fi
+
+    echo "Scanning {{file}} for potential remaining US spellings..."
+
+    # Function to search for patterns and report findings
+    search_pattern() {
+        pattern="$1"
+        description="$2"
+        found=$(grep -Eon "$pattern" "{{file}}")
+        if [ -n "$found" ]; then
+            echo "Potential $description found:"
+            echo "$found"
+        fi
+    }
+
+    # Search for common US spelling patterns
+    search_pattern "\\b[a-zA-Z]+ize(d|s)?\\b" "-ize endings"
+    search_pattern "\\b[a-zA-Z]+yze(d|s)?\\b" "-yze endings"
+    search_pattern "\\b[a-zA-Z]+ization(s)?\\b" "-ization endings"
+    search_pattern "\\bcolor\\b" "color (vs colour)"
+    search_pattern "\\bcenter\\b" "center (vs centre)"
+    search_pattern "\\bdefense\\b" "defense (vs defence)"
+    search_pattern "\\blicense\\b" "license (vs licence)"
+    search_pattern "\\bpractice\\b" "practice (as a verb, vs practise)"
+    search_pattern "\\banalyze\\b" "analyze (vs analyse)"
+    search_pattern "\\bcatalog\\b" "catalog (vs catalogue)"
+    search_pattern "\\bdialog\\b" "dialog (vs dialogue)"
+    search_pattern "\\bprogram\\b" "program (vs programme, when not referring to computer programs)"
+    search_pattern "\\bfavor\\b" "favor (vs favour)"
+    search_pattern "\\blabor\\b" "labor (vs labour)"
+    search_pattern "\\bneighbor\\b" "neighbor (vs neighbour)"
+    search_pattern "\\borganize\\b" "organize (vs organise)"
+    search_pattern "\\brecognize\\b" "recognize (vs recognise)"
+
+    echo "Scan complete. Any matches listed above may need manual review."
+
+
+copy-to-motherduck local_db remote_db:
+    #!/usr/bin/env sh
+    echo "Copying database to MotherDuck: {{local_db}} -> {{remote_db}}..."
+    duckdb << EOF
+    ATTACH 'md:';
+    CREATE OR REPLACE DATABASE {{remote_db}} FROM '{{local_db}}';    
+    EOF
+    echo "Database copied to MotherDuck successfully."

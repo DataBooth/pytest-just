@@ -1,0 +1,50 @@
+# Default list
+default:
+    @just --list
+
+
+# 1. Recipe to create the directory structure and placeholder files
+init:
+    mkdir -p app conf docs logs src/demailer tests
+    uv init --package
+    touch app/cli.py
+    touch app/main.py
+    touch conf/regex.toml
+    touch conf/deidentify_names.toml
+    touch conf/deidentify_companies.toml
+    touch conf/deidentify_locations.toml
+    touch conf/deidentify_projects.toml
+    touch conf/deidentify_acronyms.toml
+    touch conf/deidentify_signatures.toml
+    touch docs/index.md
+    touch docs/test_cases.md
+    touch logs/.gitkeep
+    touch src/demailer/__init__.py
+    touch src/demailer/deidentifier.py
+    touch src/demailer/config.py
+    touch src/demailer/pdf_utils.py
+    touch src/demailer/logging_utils.py
+    touch tests/__init__.py
+    touch tests/test_deidentifier.py
+    touch tests/test_pdf_utils.py
+    touch .env
+
+
+
+
+# 2. Recipe to install all necessary Python packages using uv
+# You can add or remove packages as needed
+uv-add:
+    uv add loguru python-dotenv pdfplumber PyPDF2 streamlit watchdog python-dateutil
+
+# 3. Recipe to run tests (assuming you use pytest)
+test:
+    pytest tests
+
+# 4. Recipe to run the CLI (example usage)
+run-cli input="sample.pdf" output="output.txt":
+    python app/cli.py {{input}} -o {{output}}
+
+# 5. Recipe to run the Streamlit app
+app:
+    streamlit run app/main.py

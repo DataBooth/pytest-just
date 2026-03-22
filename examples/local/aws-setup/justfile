@@ -1,0 +1,63 @@
+default:
+    @just --list
+
+# --- One-off IAM setup ---
+
+setup-create-group:
+	aws iam create-group --group-name databooth
+
+setup-attach-policy:
+	aws iam attach-group-policy --group-name databooth --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+
+setup-create-user:
+	aws iam create-user --user-name mjboothaus
+
+setup-add-user-to-group:
+	aws iam add-user-to-group --group-name databooth --user-name mjboothaus
+
+setup-create-access-key:
+	aws iam create-access-key --user-name mjboothaus
+
+setup-create-login-profile:
+	aws iam create-login-profile --user-name mjboothaus --password 'ReplaceWithASecurePassword123!' --password-reset-required
+
+setup-verify-group:
+	aws iam get-group --group-name databooth
+
+# --- S3 and CloudShell automation ---
+
+create-bucket bucket region="ap-southeast-2":
+	aws s3api create-bucket \
+		--bucket {{bucket}} \
+		--region {{region}} \
+		--create-bucket-configuration LocationConstraint={{region}}
+
+upload-to-s3 file:
+	aws s3api put-object --bucket {{BUCKET}} --key {{file}} --body {{file}}
+
+download-from-s3 file:
+	aws s3api get-object --bucket {{BUCKET}} --key {{file}} {{file}}
+
+list-home:
+	ls -lh /home/cloudshell-user
+
+list-buckets:
+	aws s3api list-buckets
+
+list-objects:
+	aws s3api list-objects-v2 --bucket {{BUCKET}}
+
+remove-from-s3 file:
+	aws s3api delete-object --bucket {{BUCKET}} --key {{file}}
+
+list-users:
+	aws iam list-users
+
+list-groups:
+	aws iam list-groups
+
+users-in-group group:
+	aws iam get-group --group-name {{group}}
+
+groups-for-user user:
+	aws iam list-groups-for-user --user-name {{user}}

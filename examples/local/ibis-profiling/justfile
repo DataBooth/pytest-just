@@ -1,0 +1,91 @@
+
+## Project Initialisation
+
+# To initialize a new project (equivalent to `pdm init`):
+
+# ```bash
+# uv init project_name
+# cd project_name
+# ```
+
+# This will create a new project with a `pyproject.toml` file. You can then edit the `pyproject.toml` file to specify the Python version and other project details.
+
+# ## Adding Packages
+
+# For adding production dependencies (equivalent to `pdm add package_name`):
+
+# ```bash
+# uv add package_name
+# ```
+
+# For adding development dependencies (equivalent to `pdm add -dG group_name package_name`):
+
+# ```bash
+# uv add --dev package_name
+# ```
+
+# Note that uv doesn't have a direct equivalent for package groups, but you can use the `--dev` flag to add development dependencies.
+
+# ## Additional Useful Commands
+
+# 1. Create and activate a virtual environment:
+# ```bash
+# uv venv
+# ```
+
+# 2. Install Python (if needed):
+# ```bash
+# uv python install 3.12
+# ```
+
+# 3. Sync dependencies from lockfile:
+# ```bash
+# uv sync
+# ```
+
+# 4. Run a Python script with its dependencies:
+# ```bash
+# uv run script.py
+# ```
+
+# 5. Generate a `requirements.txt` file:
+# ```bash
+# uv pip compile pyproject.toml -o requirements.txt
+# ```
+
+## Justfile Recipes
+
+
+# Initialise a new project
+pdm-init project_name="":
+    uv init {{project_name}}
+    cd {{project_name}}
+
+# Add a production dependency
+pdm-add package:
+    uv add {{package}}
+
+# Add a development dependency
+pdm-add-dev package:
+    uv add --dev {{package}}
+
+# Create a virtual environment
+venv:
+    uv venv
+
+# Install Python
+install-python version:
+    uv python install {{version}}
+
+# Sync dependencies
+sync:
+    uv sync
+
+# Run a Python script
+# run script:
+#     uv run {{script}}
+
+# Generate requirements.txt
+reqs:
+    uv pip compile pyproject.toml -o requirements.txt
+

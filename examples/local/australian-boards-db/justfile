@@ -1,0 +1,99 @@
+# Australian Boards Database - Task Runner
+# Cross-platform justfile for macOS, Windows, and Linux
+
+# List available recipes
+default:
+    @just --list
+
+# Setup development environment
+setup:
+    uv sync --group dev
+    @echo "✅ Development environment ready"
+
+# Initialize database schema
+init:
+    uv run python -m australian_boards_db.main init
+    @echo "✅ Database initialized"
+
+# Run data collection phases
+phase1:
+    uv run python -m australian_boards_db.main phase1
+    @echo "✅ Phase 1 (Government data) complete"
+
+# Run ASX scraping with small test sample
+phase2-test:
+    uv run python -m australian_boards_db.main phase2 --limit=10
+    @echo "✅ Phase 2 test (10 companies) complete"
+
+# Run LinkedIn enrichment with small batch
+phase3-test:
+    uv run python -m australian_boards_db.main phase3 --batch_size=10
+    @echo "✅ Phase 3 test (10 members) complete"
+
+# Run all phases in sequence (test mode)
+pipeline-test: init phase1 phase2-test phase3-test
+    @echo "🎉 Full test pipeline complete"
+
+# Code formatting
+format:
+    uv run black src/ --line-length=88
+    uv run isort src/
+    @echo "✅ Code formatted"
+
+# Code linting
+lint:
+    uv run flake8 src/
+    uv run mypy src/ --ignore-missing-imports
+    @echo "✅ Code linted"
+
+# Run tests
+test:
+    uv run pytest tests/ -v
+    @echo "✅ Tests complete"
+
+# Run tests with coverage
+test-cov:
+    uv run pytest tests/ --cov=australian_boards_db --cov-report=term-missing
+    @echo "✅ Tests with coverage complete"
+
+# Start Jupyter Lab for notebook development
+notebook:
+    uv run jupyter lab notebooks/
+    @echo "📚 Jupyter Lab started"
+
+# Query database interactively
+query sql="SELECT COUNT(*) FROM boards":
+    uv run python -m australian_boards_db.main query --sql="{{sql}}"
+
+# Export data to CSV
+export path="boards_export.csv":
+    uv run python -m australian_boards_db.main export --format=csv --path="{{path}}"
+    @echo "✅ Data exported to {{path}}"
+
+# View recent logs
+logs:
+    tail -f boards.log
+
+# Clean cache and temporary files
+clean:
+    rm -rf cache_dir/
+    rm -f *.csv
+    rm -f *.log
+    find . -name "*.pyc" -delete
+    find . -name "__pycache__" -delete
+    @echo "🧹 Cache and temporary files cleaned"
+
+# Full development workflow
+dev: setup format lint test
+    @echo "🚀 Development workflow complete"
+
+# Production data pipeline (full limits)
+pipeline-prod: init phase1
+    uv run python -m australian_boards_db.main phase2 --limit=300
+    uv run python -m australian_boards_db.main phase3 --batch_size=50
+    @echo "🎯 Production pipeline complete"
+
+# Check data quality
+check-data:
+    uv run python -m australian_boards_db.main query --sql="SELECT source, COUNT(*) as count FROM boards GROUP BY source"
+    @echo "✅ Data quality check complete"

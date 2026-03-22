@@ -1,0 +1,97 @@
+version := `grep '^version' pyproject.toml | awk -F '"' '{print $2}'`
+
+# Note commands to install just on Debian in recipe below - clearly these can't be run with just :) 
+
+# Display help information
+default:
+    @just --list
+
+eg_dashboard:
+    #!/usr/bin/env bash
+    shiny run src/try_shiny_quarto/example_dashboard.py
+
+st_eg_dashboard:
+    #!/usr/bin/env bash
+    streamlit run src/try_shiny_quarto/st_example_dashboard.py
+
+tag_for_publish major_minor_patch="patch":
+    #!/usr/bin/env bash
+    just update_version {{major_minor_patch}} && just _build
+
+
+update_version major_minor_patch:
+    python build_tool_src/version_manager.py {{major_minor_patch}}
+
+_build:
+    echo Exporting requirements.txt
+    just reqs
+    echo Git tagged version {{version}}
+    git tag -a v{{version}} -m "Version {{version}}"
+    git push origin v{{version}}
+    # echo Building version {{version}}... 
+    echo pdm build performed in GitHub Action
+
+
+get_version_pyproject:
+    #!/usr/bin/env bash
+    grep '^version' pyproject.toml | awk -F '"' '{print $2}'
+
+
+show_tag:
+    git tag
+
+
+del_tag tagname:
+    git tag -d {{tagname}}
+
+
+del_tag_remote tagname:
+    git push --delete origin {{tagname}}
+
+# Update requirements.txt for production dependencies with PDM
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod
+
+# py:
+#   #!/usr/bin/env python3
+#   Python code here
+
+# Homebrew on Linux is not supported on ARM processors.
+homebrew_install:
+    #!/usr/bin/env bash
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+
+install_just:
+    #!/usr/bin/env bash
+    wget -qO - 'https://proget.makedeb.org/debian-feeds/prebuilt-mpr.pub' | gpg --dearmor | sudo tee /usr/share/keyrings/prebuilt-mpr-archive-keyring.gpg 1> /dev/null
+    echo "deb [arch=all,$(dpkg --print-architecture) signed-by=/usr/share/keyrings/prebuilt-mpr-archive-keyring.gpg] https://proget.makedeb.org prebuilt-mpr $(lsb_release -cs)" | sudo tee /etc/apt/sources.list.d/prebuilt-mpr.list
+    sudo apt update
+    sudo apt install just
+
+pyenv_setup_linux:
+    #!/usr/bin/env bash
+    curl https://pyenv.run | bash
+    echo "Please run the 3 commands above and either restart your shell"
+    echo "or run the following command to initialise pyenv:"
+    echo "   source ~/.bashrc" 
+  
+
+python_deps_install_linux:
+    #!/usr/bin/env bash
+    sudo apt update --yes; sudo apt install --yes build-essential libssl-dev zlib1g-dev \
+    libbz2-dev libreadline-dev libsqlite3-dev curl \
+    libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+
+python_install_latest_releases:
+    #!/usr/bin/env bash
+    # Latest 3 minor versions and set global to 3.11.8
+    # pyenv install 3.9.18
+    pyenv install 3.10.13
+    pyenv install 3.11.8
+    pyenv install 3.12.2
+    pyenv global 3.11.8
+
+uv_install:
+    #!/usr/bin/env bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh

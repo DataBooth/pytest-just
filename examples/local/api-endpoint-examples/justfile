@@ -1,0 +1,75 @@
+# Default recipe to list available commands
+default:
+    @just --list
+
+## R recipes ##
+
+# List all R-related processes
+list-r-processes:
+    @ps aux | grep "[R]" | grep -E "/Library/Frameworks/R.framework/Resources/bin/exec/R" | grep -v grep
+
+# Kill all R-related processes
+kill-r-processes:
+    @pkill -f "/Library/Frameworks/R.framework/Resources/bin/exec/R"
+
+
+# Need to run from r-examples dir
+
+# Start a shiny app
+[no-cd]
+start-shiny PORT app_name="simple_shiny.R":
+    cd shiny && Rscript -e "shiny::runApp('{{app_name}}', port = {{PORT}})"
+
+
+# Start the API
+[no-cd]
+start-api:
+    Rscript -e 'source("start_api.R")'
+
+
+# Get current working directory
+pwd:
+    Rscript -e "getwd()"
+
+# Source an R file
+source file:
+    Rscript -e "source('{{file}}')"
+
+# Run R tests
+test:
+    Rscript -e "testthat::test_dir('tests')"
+
+# Run R lint
+lint:
+    Rscript -e "lintr::lint_dir('R')"
+
+# Install R packages from DESCRIPTION file
+install_deps:
+    Rscript -e "remotes::install_deps()"
+
+# Build R package
+build:
+    R CMD build .
+
+# Check R package
+check:
+    R CMD check --as-cran *.tar.gz
+
+# Generate documentation with roxygen2
+document:
+    Rscript -e "devtools::document()"
+
+
+## Python Recipes ##
+
+# Start FastAPI server
+start_server_fastapi:
+    python python-examples/start_api.py
+
+# Build Docker image
+docker_build:
+    docker build -t credit-risk-api-image .
+
+# Run Docker container
+docker_run:
+    docker run -d --name credit-risk-api-container -p 8000:8000 credit-risk-api-image

@@ -1,0 +1,90 @@
+# Default
+default:
+    @just --list
+
+# Find non-managed executables in common directories
+find-unmanaged-tools:
+    #!/usr/bin/env python3
+    import os
+    import subprocess
+    from pathlib import Path
+
+    def get_binaries_in_dir(directory):
+        p = Path(os.path.expanduser(directory))
+        if p.is_dir():
+            return {f.name for f in p.iterdir() if f.is_file() and os.access(f, os.X_OK)}
+        return set()
+
+    def get_brew_binaries():
+        try:
+            out = subprocess.check_output(['brew', 'list', '--formulae'], text=True)
+            formulas = out.strip().splitlines()
+            bins = set()
+            for formula in formulas:
+                prefix = subprocess.check_output(['brew', '--prefix', formula], text=True).strip()
+                bin_dir = Path(prefix) / 'bin'
+                if bin_dir.is_dir():
+                    bins.update(f.name for f in bin_dir.iterdir() if f.is_file() and os.access(f, os.X_OK))
+            return bins
+        except Exception:
+            return set()
+
+    def get_pipx_binaries():
+        try:
+            out = subprocess.check_output(['pipx', 'list'], text=True)
+            lines = out.splitlines()
+            bins = set()
+            for line in lines:
+                if line.strip().startswith('package '):
+                    pkg = line.strip().split()[1]
+                    try:
+                        which = subprocess.check_output(['pipx', 'run', '--spec', pkg, 'which', pkg], text=True).strip()
+                        bins.add(Path(which).name)
+                    except Exception:
+                        continue
+            return bins
+        except Exception:
+            return set()
+
+    def get_uv_binaries():
+        try:
+            out = subprocess.check_output(['uv', 'pip', 'list', '--user', '--format=freeze'], text=True)
+            pkgs = [line.split('==')[0] for line in out.strip().splitlines()]
+            bins = set()
+            for pkg in pkgs:
+                try:
+                    show = subprocess.check_output(['uv', 'pip', 'show', pkg], text=True)
+                    for l in show.splitlines():
+                        if l.startswith('Location:'):
+                            loc = l.split('Location:')[1].strip()
+                            bin_dir = Path(loc) / 'bin'
+                            if bin_dir.is_dir():
+                                bins.update(f.name for f in bin_dir.iterdir() if f.is_file() and os.access(f, os.X_OK))
+                except Exception:
+                    continue
+            return bins
+        except Exception:
+            return set()
+
+    def main():
+        search_dirs = [
+            '~/.local/bin',
+            '~/.cargo/bin',
+            '/usr/local/bin',
+        ]
+        all_bins = set()
+        for d in search_dirs:
+            all_bins.update(get_binaries_in_dir(d))
+
+        managed = set()
+        managed.update(get_brew_binaries())
+        managed.update(get_pipx_binaries())
+        managed.update(get_uv_binaries())
+
+        unmanaged = sorted(all_bins - managed)
+        print("Executables in common user bin directories NOT managed by brew, pipx, or uv:")
+        for exe in unmanaged:
+            print(f"  {exe}")
+
+    if __name__ == '__main__':
+        main()

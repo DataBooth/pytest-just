@@ -1,0 +1,10 @@
+default:
+  @just --list
+
+# Run a Gradio app
+app gradio_app_name:
+    python app/{{gradio_app_name}}
+
+
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod

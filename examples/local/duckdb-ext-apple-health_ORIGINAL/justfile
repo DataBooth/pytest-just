@@ -1,0 +1,88 @@
+# Default recipe to display help
+default:
+    @just --list
+
+# Set shell based on OS
+shell := if os() == "windows" { "powershell.exe" } else { "bash" }
+
+# Set default Python version
+python := "python3"
+
+# Environment setup recipes
+setup-dev: setup-cpp setup-python
+
+# Setup C++ development environment
+setup-cpp:
+    cmake --version
+    which clang++ || echo "clang++ not found"
+
+# Setup Python development environment
+setup-python:
+    uv venv
+    uv pip install duckdb pandas jupyter xmltodict tqdm plotly rich
+
+# Clean build directories
+clean:
+    rm -rf build
+    rm -rf dist
+
+# Configure CMake build
+configure *args:
+    cmake -B build {{ args }}
+
+# Build the extension
+build *args: clean configure
+    cmake --build build {{ args }}
+
+# Run Python tests
+test-python:
+    uv run python scripts/test_queries.py
+
+# Run SQL tests
+test-sql:
+    uv run python scripts/test_queries.py --sql-dir test/sql
+
+# Run all tests
+test: test-python test-sql
+
+# Process new Apple Health export
+process-export export_file:
+    uv run python scripts/extract_workouts.py "{{export_file}}"
+
+# Analyze workouts in Jupyter
+analyze:
+    uv run jupyter notebook notebooks/01_explore_workouts.ipynb
+
+# Development tasks
+dev-clean:
+    rm -rf .venv
+    rm -rf build
+    rm -rf dist
+    find . -type d -name "__pycache__" -exec rm -r {} +
+    find . -type f -name "*.pyc" -delete
+
+# Package the extension
+package: clean build
+    mkdir -p dist
+    cp build/apple_health.duckdb_extension dist/
+    # Create Python wheel if needed in future
+
+# Format all code
+format: format-cpp format-python
+
+# Format C++ code
+format-cpp:
+    find src test -name "*.cpp" -o -name "*.hpp" | xargs clang-format -i
+
+# Format Python code
+format-python:
+    uv pip install black
+    uv run black scripts/*.py notebooks/*.py
+
+# Development database tasks
+db-init:
+    uv run python scripts/test_queries.py --db workouts.db
+
+# Watch Python tests (requires entr)
+watch-python:
+    find scripts test -name "*.py" | entr -c just test-python

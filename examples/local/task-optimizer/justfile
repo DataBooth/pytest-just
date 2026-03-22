@@ -1,0 +1,102 @@
+NGROK_PORT := "3000"
+
+# List all available recipes
+default:
+    @just --list
+
+# Run the (default) app
+app app_py="app/st_task_schedule.py":
+    streamlit run {{app_py}}
+
+# Build the Docker image
+build:
+    docker build -t streamlit-app .
+
+# Run the Docker container
+run:
+    docker run -p 8080:8501 streamlit-app
+
+# Build and run the Docker container
+up: build run
+
+# Stop and remove all running containers
+down:
+    docker stop $(docker ps -aq)
+    docker rm $(docker ps -aq)
+
+# Inspect the Docker image
+inspect:
+    docker inspect streamlit-app
+
+# View logs of the running container
+logs:
+    docker logs $(docker ps -q --filter ancestor=streamlit-app)
+
+# Run Hadolint to check the Dockerfile
+lint:
+    hadolint Dockerfile
+
+# Open a bash shell in the running container
+shell:
+    docker exec -it $(docker ps -q --filter ancestor=streamlit-app) /bin/bash
+
+# Check processes in the container
+ps:
+    docker exec $(docker ps -q --filter ancestor=streamlit-app) ps aux
+
+# Clean up Docker system (use with caution)
+clean:
+    docker system prune -af
+
+# Open the Streamlit app in the default browser
+open:
+    open http://localhost:8501
+
+# Get latest Debian package versions
+get-package-versions packages="curl,build-essential,ca-certificates":
+    echo "Fetching latest Debian package versions..."
+    docker run --rm ubuntu:20.04 bash -c 'apt-get update >/dev/null 2>&1 && for pkg in curl build-essential ca-certificates; do echo "Package: $pkg"; apt-cache policy $pkg | grep -A1 "Candidate:"; echo; done'
+
+
+
+## Todoist Extension
+[no-cd]
+todoist-ui-ext-api app_path="app.main" app_name="app":
+    uvicorn {{app_path}}:{{app_name}} --reload --port {{NGROK_PORT}}
+
+
+# check-health-local:
+#     curl --include --request GET http://localhost:{{NGROK_PORT}}/health
+
+# check-ui-extension:
+#     curl -X POST http://127.0.0.1:3000/ui-extension \
+#         -d '{"action": {"actionType": "get_tasks"}}' \
+#         -H "Content-Type: application/json"
+
+
+# # Initial installation of ngrok
+# install-ngrok:
+#     brew install --cask ngrok
+
+# # Start ngrok tunnel
+# ngrok-start:
+#     ngrok http {{NGROK_PORT}}
+    
+
+## Check Health Endpoint Locally
+check-health-local:
+    curl --include --request GET http://localhost:{{NGROK_PORT}}/health
+
+## Test UI Extension Locally
+check-ui-extension:
+    curl -X POST http://localhost:{{NGROK_PORT}}/ui-extension \
+        -d '{"action": {"actionType": "get_tasks"}}' \
+        -H "Content-Type: application/json"
+
+## Start ngrok Tunnel (Dynamic URL)
+ngrok-start:
+    ngrok http {{NGROK_PORT}}
+
+## Start ngrok Tunnel (Static URL)
+ngrok-start-static:
+    ngrok http --url=mole-funny-macaw.ngrok-free.app {{NGROK_PORT}}

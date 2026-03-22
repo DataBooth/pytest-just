@@ -1,0 +1,73 @@
+# Define application name and default port
+APP_NAME := "travelai-databooth"
+DEFAULT_PORT := "8501"
+
+set dotenv-load
+
+default:
+  @just --list
+
+
+update-st-config:
+    streamlit config show > .streamlit/config.toml
+
+app app_name="app/main.py":
+    streamlit run {{app_name}} --server.address=localhost
+
+# Export and update packages from project to requirements.txt
+reqs:
+    uv export -U > requirements.txt
+
+# Docker commands
+
+# Build Docker image
+build:
+    docker build --no-cache -t {{APP_NAME}} .
+
+# Run Docker container with a specified port (default: 8501)
+run PORT=DEFAULT_PORT:
+    docker run -e PORT={{PORT}} -p {{PORT}}:{{PORT}} {{APP_NAME}}
+
+# Run Docker container with a custom port
+run-with-port port:
+    docker run -e PORT={{port}} -p {{port}}:{{port}} {{APP_NAME}}
+
+# Stop all running Docker containers
+stop:
+    docker stop $(docker ps -q)
+
+# Remove all stopped Docker containers
+remove-containers:
+    docker rm $(docker ps -a -q)
+
+# Remove all Docker images
+remove-images:
+    docker rmi $(docker images -q)
+
+# Inspect the container's configuration
+inspect container_id:
+    docker inspect {{container_id}}
+
+# Build and run the container (default port: 8501)
+up:
+    just build && just run
+
+# Build and run the container with a custom port
+up-with-port port:
+    just build && just run-with-port {{port}}
+
+# Stop and clean up all containers
+down:
+    just stop && just remove-containers
+
+# Run the container with a bash shell
+bash:
+    docker run -it --entrypoint /bin/bash {{APP_NAME}}
+
+
+## Umami Analytics
+
+test-umami:
+    curl https://api.umami.is/v1/websites \
+        -H "Accept: application/json" \
+        -H "x-umami-api-key: $UMAMI_API_KEY"

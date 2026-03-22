@@ -1,0 +1,73 @@
+# just-compose Justfile
+# Recipes for development, testing, and running just-compose
+
+# List all recipes (default)
+default:
+    @just --list
+
+# Run the CLI (pass args after --)
+cli *args:
+    python -m just_compose.cli {{args}}
+
+# Initialise the database schema
+init-db:
+    just cli initdb
+
+# Import all justfiles from a directory (usage: just import-dir ./mydir)
+import-dir dir:
+    just cli import-dir {{dir}}
+
+# Import a single justfile (usage: just import-file ./path/to/justfile)
+import-file file:
+    just cli import-file {{file}}
+
+# List recipes in the database (default: 20)
+list-recipes:
+    just cli list-recipes
+
+# Show a recipe's details by ID (usage: just show-recipe 3)
+show-recipe id:
+    just cli show-recipe {{id}}
+
+# Export selected recipes as a new justfile (usage: just export-justfile "1,2,3" ./output/justfile)
+export-justfile recipe_ids output:
+    just cli export-justfile {{recipe_ids}} {{output}}
+
+# App shortcut
+app: ui-streamlit
+
+# Run the Streamlit UI
+ui-streamlit:
+    streamlit run src/just_compose/ui_streamlit.py
+
+# (Optional) Run the MonsterUI frontend
+ui-monster:
+    python src/just_compose/ui_monster.py
+
+# Format Python code with black
+format:
+    uv pip install black
+    black src/ tests/
+
+# Lint code with ruff
+lint:
+    uv pip install ruff
+    ruff src/ tests/
+
+# Run tests (assuming pytest)
+test:
+    uv pip install pytest
+    pytest tests/
+
+# Clean up .pyc and __pycache__ files
+clean:
+    find . -name '*.pyc' -delete
+    find . -name '__pycache__' -type d -exec rm -r {} +
+
+# Show project environment variables
+env:
+    cat .env || echo ".env file not found"
+
+# Print DuckDB database path
+db-path:
+    python -c "import os; print(os.getenv('DATABASE_PATH', 'just_compose.duckdb'))"

@@ -1,0 +1,45 @@
+default:
+  @just --list
+
+# Recipe to list Excel files and count them
+excel-list source_dir=".":
+    #!/usr/bin/env sh
+    @if [ ! -d "$(source_dir)" ]; echo "Error: Source directory '$(realpath "$(source_dir)")' does not exist." ; exit 1; fi
+    @files=$(find "$(source_dir)" -type f \( -name "*.xlsx" -o -name "*.xlsm" \)); \
+    count=$$(echo "$$files" | wc -l); \
+    echo "Excel files found in '$(realpath "$(source_dir)")':"; \
+    echo "$$files"; \
+    echo "Total count: $$count"
+
+# Recipe to copy Excel files to a specified destination directory
+excel-copy destination_dir source_dir=".":
+    @if [ ! -d "$(source_dir)" ]; then \
+        echo "Error: Source directory '$(realpath $(source_dir))' does not exist."; \
+        exit 1; \
+    fi
+    @if [ ! -d "$(destination_dir)" ]; then \
+        echo "Error: Destination directory '$(realpath $(destination_dir))' does not exist."; \
+        exit 1; \
+    fi
+    @echo "Copying Excel files from '$(realpath $(source_dir))' to '$(realpath $(destination_dir))'"
+    @find "$(source_dir)" -type f \( -name "*.xlsx" -o -name "*.xlsm" \) -exec cp {} "$(destination_dir)" \;
+    @echo "Excel files copied from '$(realpath $(source_dir))' to '$(realpath $(destination_dir))'"
+
+# Recipe to clean the destination directory
+clean destination_dir:
+    @if [ ! -d "$(destination_dir)" ]; then \
+        echo "Error: Destination directory '$(realpath $(destination_dir))' does not exist."; \
+        exit 1; \
+    fi
+    @echo "Cleaning destination directory: $(destination_dir)"
+    @rm -rf "$(destination_dir)"/*
+    @echo "Destination directory cleaned"
+
+# Recipe to create the destination directory if it doesn't exist
+# prepare destination_dir:
+#     @if [ ! -d "$(destination_dir)" ]; then \
+#         echo "Preparing destination directory: $(destination_dir)"
+#         @mkdir -p "$(destination_dir)"
+#         @echo "Destination directory prepared"
+#     else
+#         echo "Destination directory '$(realpath $(destination_dir))' already exists."

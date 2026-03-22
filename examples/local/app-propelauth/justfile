@@ -1,0 +1,27 @@
+default:
+    @just --list
+
+# Export the Python project requirements from pyproject.toml to requirements.txt
+reqs:
+    pdm export --o requirements.txt --without-hashes --prod
+
+# App
+
+# Run the default Streamlit app
+app app_name="app/st_main.py":
+    streamlit run {{app_name}}
+
+# Docker
+
+# Start Docker (if it is not running)
+dstart:
+    docker info > /dev/null 2>&1 && echo "Docker is running" || echo "Starting Docker" && open -a Docker
+
+dstop:
+    killall Docker
+    #docker ps -q | xargs -L1 docker stop && 
+
+
+# Build the image from the specified Dockerfile
+dbuild image_name dockerfile_path="Dockerfile":
+    docker build -t {{image_name}} -f {{dockerfile_path}} .
