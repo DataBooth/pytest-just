@@ -1,3 +1,5 @@
+"""Tests for plugin option handling and justfile root discovery."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,6 +10,7 @@ from pytest_just.plugin import _create_just_fixture, _discover_justfile_root
 
 
 def test_discover_prefers_nearest_parent_justfile(tmp_path: Path) -> None:
+    """Ensure discovery chooses the nearest ancestor with a justfile."""
     top = tmp_path / "top"
     middle = top / "middle"
     leaf = middle / "leaf"
@@ -19,6 +22,7 @@ def test_discover_prefers_nearest_parent_justfile(tmp_path: Path) -> None:
 
 
 def test_session_fixture_uses_explicit_root_option(tmp_path: Path) -> None:
+    """Ensure explicit root option overrides auto-discovery."""
     explicit_root = tmp_path / "explicit"
     explicit_root.mkdir(parents=True)
     (explicit_root / "justfile").write_text("test:\n    @echo ok\n", encoding="utf-8")
@@ -39,6 +43,7 @@ def test_session_fixture_uses_explicit_root_option(tmp_path: Path) -> None:
 
 
 def test_session_fixture_auto_discovers_root(tmp_path: Path) -> None:
+    """Ensure fixture creation auto-discovers root when option is absent."""
     root = tmp_path / "project"
     nested = root / "a" / "b"
     nested.mkdir(parents=True)
@@ -54,6 +59,7 @@ def test_session_fixture_auto_discovers_root(tmp_path: Path) -> None:
 
 
 def test_session_fixture_raises_when_no_justfile_found(tmp_path: Path) -> None:
+    """Ensure fixture creation fails when no justfile can be discovered."""
     nested = tmp_path / "a" / "b"
     nested.mkdir(parents=True)
     with pytest.raises(FileNotFoundError):

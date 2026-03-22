@@ -1,3 +1,5 @@
+"""Custom exception types used by pytest-just."""
+
 from __future__ import annotations
 
 

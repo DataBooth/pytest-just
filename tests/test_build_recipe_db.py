@@ -1,3 +1,5 @@
+"""Golden and behavioural tests for the recipe DB build script."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -18,6 +20,7 @@ _BUILDER_SPEC.loader.exec_module(builder)
 
 
 def test_discover_repo_justfiles_respects_exclusion_and_case(tmp_path: Path) -> None:
+    """Ensure repo discovery honours exclusions and case-insensitive justfile matching."""
     source_root = tmp_path / "source"
     source_root.mkdir()
 
@@ -44,6 +47,7 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    """Ensure the build pipeline writes expected DB, manifest, report, and log outputs."""
     source_root = tmp_path / "source"
     source_root.mkdir()
 
@@ -104,6 +108,7 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
         justfile_path: Path,
         *args: str,
     ) -> subprocess.CompletedProcess[str]:
+        """Simulate `just` invocations for successful and failing repositories."""
         assert just_bin == "just"
         assert justfile_path.exists()
 

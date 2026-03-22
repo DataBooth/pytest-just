@@ -1,3 +1,5 @@
+"""Build a DuckDB corpus of recipes discovered across sibling justfiles."""
+
 from __future__ import annotations
 
 import hashlib
@@ -17,6 +19,7 @@ from loguru import logger
 
 @dataclass(frozen=True)
 class RepoJustfile:
+    """Descriptor for a repository and its canonical justfile path."""
     repo_name: str
     repo_path: Path
     justfile_path: Path
@@ -26,6 +29,7 @@ app = typer.Typer(help="Build a DuckDB recipe corpus from sibling justfiles.")
 
 
 def _discover_repo_justfiles(source_root: Path, exclude_repo: str) -> list[RepoJustfile]:
+    """Discover sibling repositories that contain a justfile."""
     repos: list[RepoJustfile] = []
     for entry in sorted(source_root.iterdir(), key=lambda p: p.name.lower()):
         if not entry.is_dir() or entry.name == exclude_repo:
@@ -48,6 +52,7 @@ def _discover_repo_justfiles(source_root: Path, exclude_repo: str) -> list[RepoJ
 
 
 def _run_just(just_bin: str, repo_path: Path, justfile_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Execute ``just`` against an explicit justfile path."""
     command = [just_bin, "--justfile", str(justfile_path), *args]
     return subprocess.run(
         command,
@@ -59,6 +64,7 @@ def _run_just(just_bin: str, repo_path: Path, justfile_path: Path, *args: str) -
 
 
 def _extract_dependencies(recipe_payload: dict[str, Any]) -> list[str]:
+    """Extract dependency names from a recipe payload."""
     deps: list[str] = []
     for dep in recipe_payload.get("dependencies", []):
         if isinstance(dep, dict):
@@ -69,6 +75,7 @@ def _extract_dependencies(recipe_payload: dict[str, Any]) -> list[str]:
 
 
 def _extract_parameters(recipe_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract normalised parameter dictionaries from a recipe payload."""
     params = recipe_payload.get("parameters", [])
     if not isinstance(params, list):
         return []
@@ -88,6 +95,7 @@ def _extract_parameters(recipe_payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _fallback_body_text(recipe_payload: dict[str, Any]) -> str:
+    """Render textual body content from structured fragments."""
     lines = recipe_payload.get("body", [])
     if not isinstance(lines, list):
         return ""
@@ -108,6 +116,7 @@ def _fallback_body_text(recipe_payload: dict[str, Any]) -> str:
 
 
 def _normalise_body(text: str) -> str:
+    """Trim and whitespace-normalise command text line by line."""
     stripped_lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
     filtered = [line for line in stripped_lines if line]
     return "\n".join(filtered)
@@ -120,6 +129,7 @@ def _recipe_signature(
     body_normalised: str,
     is_shebang: bool,
 ) -> str:
+    """Compute a stable signature hash for recipe shape and content."""
     payload = {
         "recipe_name": recipe_name,
         "dependencies": sorted(set(dependencies)),
@@ -132,6 +142,7 @@ def _recipe_signature(
 
 
 def _ensure_dir(path: Path) -> None:
+    """Create a directory tree if it does not already exist."""
     path.mkdir(parents=True, exist_ok=True)
 
 
@@ -140,6 +151,7 @@ def _copy_local_examples(
     local_examples_dir: Path,
     generated_utc: str,
 ) -> Path:
+    """Copy discovered justfiles into local examples and emit a manifest file."""
     _ensure_dir(local_examples_dir)
     manifest_path = local_examples_dir / "MANIFEST.tsv"
 
@@ -179,6 +191,7 @@ def _write_report(
     top_recipe_names: list[tuple[str, int, int]],
     top_signatures: list[tuple[str, int, int, str]],
 ) -> None:
+    """Write a markdown summary of discovered recipe reuse."""
     _ensure_dir(report_path.parent)
     lines: list[str] = []
     lines.append("# Recipe reuse report")
@@ -235,6 +248,7 @@ def build(
     ),
     just_bin: str = typer.Option("just", help="just executable path/name."),
 ) -> None:
+    """Build the recipe database and companion markdown report."""
     _ensure_dir(log_path.parent)
     logger.remove()
     logger.add(log_path, level="INFO")

@@ -1,3 +1,5 @@
+"""Pytest plugin registration and fixture wiring for pytest-just."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,6 +10,7 @@ from .fixture import JustfileFixture
 
 
 def _discover_justfile_root(start: Path) -> Path:
+    """Find the nearest ancestor directory containing a justfile."""
     for candidate in (start, *start.parents):
         if (candidate / "justfile").exists() or (candidate / "Justfile").exists():
             return candidate
@@ -18,6 +21,7 @@ def _discover_justfile_root(start: Path) -> Path:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register command-line options for the plugin."""
     group = parser.getgroup("pytest-just")
     group.addoption(
         "--justfile-root",
@@ -34,9 +38,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    """Register pytest markers used by this plugin."""
     config.addinivalue_line("markers", "justfile: marks tests as justfile recipe tests")
 
+
 def _create_just_fixture(rootpath: Path, justfile_root: str | None, just_bin: str) -> JustfileFixture:
+    """Create a configured session fixture from parsed pytest options."""
     if justfile_root:
         root = Path(justfile_root).resolve()
     else:
@@ -46,6 +53,7 @@ def _create_just_fixture(rootpath: Path, justfile_root: str | None, just_bin: st
 
 @pytest.fixture(scope="session")
 def just(pytestconfig: pytest.Config) -> JustfileFixture:
+    """Provide a session-scoped ``JustfileFixture`` instance."""
     return _create_just_fixture(
         rootpath=Path(str(pytestconfig.rootpath)),
         justfile_root=pytestconfig.getoption("justfile_root"),
