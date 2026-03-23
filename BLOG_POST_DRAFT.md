@@ -1,34 +1,40 @@
-# Draft: Introducing `pytest-just` — Contract Testing for justfiles
+# Draft: Introducing `pytest-just` — contract testing for `justfile` workflows
 
-## What
-`pytest-just` is a pytest plugin that lets teams test their `justfile` as first-class infrastructure.
+## Why this exists
+Many teams rely on `just` for everyday workflows: test, lint, build, release, and local runbooks.
 
-Most projects rely on `just` recipes for development, CI, release, and local automation. But recipe behaviour often lives in an untested gap between docs and scripts. `pytest-just` closes that gap by turning recipe expectations into executable tests.
+That is great for consistency, but it creates an overlooked risk: automation drift.
 
-## Why
-`justfile` regressions are common and subtle:
+When a recipe name changes, a dependency chain shifts, or a parameter contract is updated, teams often find out late — in CI failures, broken local workflows, or release friction.
 
-- a recipe is renamed or removed
-- dependencies drift (`dev` no longer calls `lint`)
-- parameters silently change
-- variable threading breaks between recipes
-- command bodies change in ways that invalidate team conventions
+Traditional tests usually validate tools (`pytest`, `ruff`, application code), not orchestration contracts in the `justfile` itself.
 
-Traditional unit/integration tests do not catch these issues because they test tools (`pytest`, `ruff`, `cargo`, etc.), not orchestration contracts in the justfile itself.
+`pytest-just` exists to test that orchestration layer directly.
 
-`pytest-just` focuses directly on those contracts.
+## What `pytest-just` is
+`pytest-just` is a pytest plugin that adds a session-scoped `just` fixture for asserting `justfile` contracts as code.
 
-## How
-The core design principle is simple: use `just` itself as the source of truth.
+It supports checks such as:
 
-`pytest-just` reads:
-- `just --dump --dump-format json` for structured recipe metadata
-- `just --show <recipe>` for rendered command text checks
-- `just --dry-run <recipe>` for safe smoke validation
+- recipe existence
+- dependency expectations
+- parameter presence
+- rendered body content
+- alias and assignment extraction
+- safe dry-run command checks
 
-This avoids reimplementing the justfile grammar and keeps tests side-effect light.
+## How it works
+`pytest-just` uses `just` itself as the source of truth, rather than re-implementing justfile parsing.
 
-### Example
+It relies on:
+
+- `just --dump --dump-format json` for structured metadata
+- `just --show <recipe>` for rendered command assertions
+- `just --dry-run <recipe>` for safe smoke checks
+
+This keeps tests fast, practical, and close to real behaviour.
+
+## Example
 ```python
 import pytest
 
@@ -38,26 +44,36 @@ def test_ci_contract(just):
     just.assert_depends_on("ci", ["test"], transitive=True)
 ```
 
-### What this enables
-- fast feedback for recipe drift
-- readable, intention-focused tests
-- safer refactoring of automation workflows
-- confidence for multi-maintainer repos where justfiles are shared infrastructure
+## What this enables in practice
 
-## Current status
-The project currently includes:
-- package scaffold and plugin wiring
-- initial fixture API
-- sample real-world justfiles for compatibility testing
-- example-driven test suite
-- `uv` + `ruff` + `ty` development workflow
+- earlier feedback on automation regressions
+- clearer ownership of workflow contracts
+- safer refactors of team runbooks
+- better confidence in multi-maintainer repositories
 
-## Next
-Near-term roadmap:
-1. tighten API contracts and error taxonomy
-2. deepen edge-case coverage (schema drift, aliases, import collisions)
-3. finalise CI and publish pipeline
-4. cut the first tagged release
+In plain terms: `just` keeps repeatable team tasks in one place, and `pytest-just` helps ensure those tasks keep working as your project evolves.
+
+## Current release status
+`pytest-just` is now published:
+
+- PyPI: https://pypi.org/project/pytest-just/0.1.2/
+- Source: https://github.com/DataBooth/pytest-just
+- Release: https://github.com/DataBooth/pytest-just/releases/tag/v0.1.2
+
+Current quality gates include:
+
+- `uv` for dependency management
+- `ruff` and `ty` checks
+- example-driven tests
+- property-based tests using Hypothesis
+- GitHub Actions CI
+
+## Experimental work in progress
+There is also experimental DuckDB-based recipe corpus tooling for analysing reusable just recipes across repositories.
+
+This is currently WIP and not yet a stable public API.
 
 ## Closing
-If your team treats `justfile` as critical build and delivery infrastructure, it deserves tests. `pytest-just` is designed to make that practical, fast, and maintainable.
+If your team depends on `justfile` automation, treat it like production infrastructure and test it accordingly.
+
+That is the goal of `pytest-just`: make contract testing for automation simple, fast, and maintainable.

@@ -24,6 +24,7 @@ It is designed for assertions about recipe structure and intent, including:
 
 ## Why use pytest-just?
 As projects grow, `justfile` automation often becomes critical but under-tested. Small recipe changes can quietly break CI, local developer workflows, or release steps.
+In plain terms: `just` keeps repeatable team tasks in one place, and `pytest-just` makes sure those tasks keep working as the project changes.
 
 `pytest-just` helps by making contract checks:
 
