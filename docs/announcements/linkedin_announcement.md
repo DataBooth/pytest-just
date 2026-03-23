@@ -17,3 +17,4 @@ Built with:
 If you use `just` in your workflow, I’d value your feedback on what should come next.
 
 Repo: https://github.com/DataBooth/pytest-just
+PyPI: https://pypi.org/project/pytest-just/0.1.2/

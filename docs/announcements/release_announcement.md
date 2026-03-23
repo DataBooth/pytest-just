@@ -17,5 +17,7 @@ Highlights in this release:
 - CI checks on pull requests and `main` branch pushes
 
 Repository: https://github.com/DataBooth/pytest-just
+PyPI: https://pypi.org/project/pytest-just/0.1.2/
+Release: https://github.com/DataBooth/pytest-just/releases/tag/v0.1.2
 
 Feedback, issues, and contributions are very welcome.

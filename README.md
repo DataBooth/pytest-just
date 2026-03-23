@@ -1,5 +1,16 @@
 # pytest-just
 A pytest plugin for testing justfiles.
+[![CI](https://github.com/DataBooth/pytest-just/actions/workflows/ci.yml/badge.svg)](https://github.com/DataBooth/pytest-just/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/pytest-just.svg)](https://pypi.org/project/pytest-just/)
+[![Python versions](https://img.shields.io/pypi/pyversions/pytest-just.svg)](https://pypi.org/project/pytest-just/)
+[![License: MIT](https://img.shields.io/pypi/l/pytest-just.svg)](https://github.com/DataBooth/pytest-just/blob/main/LICENSE)
+
+## Package status
+`pytest-just` is published on PyPI.
+
+- PyPI: https://pypi.org/project/pytest-just/
+- Source: https://github.com/DataBooth/pytest-just
+- Latest release notes: `RELEASE_NOTES.md`
 ## What is pytest-just?
 `pytest-just` is a plugin that adds a session-scoped `just` fixture to pytest so you can test `justfile` contracts directly in your test suite.
 
@@ -28,11 +39,34 @@ This catches automation drift early without requiring full end-to-end execution 
 - Lint/format checks: `ruff`
 - Type checks: `ty`
 - Logging: `loguru`
+## Install from PyPI
+Add `pytest-just` to your test dependencies:
 
-## Quick start
 ```bash
-uv sync
-uv run pytest
+uv add --dev pytest-just
+```
+
+You also need the `just` binary available in your environment:
+
+```bash
+just --version
+```
+
+## Quick start (package usage)
+Create tests that use the plugin fixture:
+
+```python
+import pytest
+
+@pytest.mark.justfile
+def test_ci_depends_on_test(just):
+    just.assert_exists("ci")
+    just.assert_depends_on("ci", ["test"], transitive=True)
+```
+
+Run:
+```bash
+uv run pytest -q
 ```
 ## How does pytest-just work?
 `pytest-just` primarily validates recipe contracts instead of running full recipe side effects. It asks `just` for structured metadata and rendered recipe text:
@@ -94,6 +128,7 @@ Sample real-world-inspired justfiles live under `examples/public/` and include:
 Use them to exercise fixture behaviour while developing the plugin.
 
 ## Development workflow
+If you are contributing to this repository:
 ```bash
 uv sync --extra dev
 uv run ruff check .
