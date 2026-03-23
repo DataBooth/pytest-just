@@ -31,9 +31,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: taiki-e/install-action@v2
         with:
-          just-version: "1.43.1"
+          tool: just@1.43.1
 
       - name: Check just version
         run: just --version
