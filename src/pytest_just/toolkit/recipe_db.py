@@ -19,7 +19,7 @@ from loguru import logger
 from pytest_just import __version__
 from pytest_just.toolkit.linting import list_rules, run_lint
 from pytest_just.toolkit.query_pack import list_named_queries, run_named_query
-from pytest_just.toolkit.refactoring import generate_refactor_plan
+from pytest_just.toolkit.refactoring import apply_refactor_plan, generate_refactor_plan
 
 
 @dataclass(frozen=True)
@@ -923,11 +923,96 @@ def refactor_corpus(
         "--format",
         help="Output format: markdown, json, or tsv.",
     ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Apply planned refactors to justfiles using backup/rollback safeguards.",
+    ),
+    validate: bool = typer.Option(
+        True,
+        "--validate/--no-validate",
+        help="Run validation hooks after apply (default: enabled).",
+    ),
+    just_bin: str = typer.Option(
+        "just",
+        help="just executable path/name used for syntax validation.",
+    ),
+    validation_command: str | None = typer.Option(
+        None,
+        help="Optional repository command run after just syntax checks.",
+    ),
+    backup_suffix: str = typer.Option(
+        ".bak",
+        help="Backup suffix used when apply mode is enabled.",
+    ),
 ) -> None:
-    """Generate and persist suggestion-only refactor plans."""
+    """Generate refactor suggestions, optionally apply them safely, and print results."""
     format_lower = output_format.lower()
     if format_lower not in {"markdown", "json", "tsv"}:
         raise typer.BadParameter("format must be one of: markdown, json, tsv")
+
+    if apply:
+        resolved_run_id, edits = apply_refactor_plan(
+            db_path=db_path,
+            run_id=run_id,
+            just_bin=just_bin,
+            validation_command=validation_command,
+            backup_suffix=backup_suffix,
+            validate=validate,
+        )
+        if format_lower == "json":
+            payload = [
+                {
+                    "run_id": edit.run_id,
+                    "edit_id": edit.edit_id,
+                    "suggestion_id": edit.suggestion_id,
+                    "justfile_path": edit.justfile_path,
+                    "before_hash": edit.before_hash,
+                    "after_hash": edit.after_hash,
+                    "patch_text": edit.patch_text,
+                }
+                for edit in edits
+            ]
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        elif format_lower == "tsv":
+            print("run_id\tedit_id\tsuggestion_id\tjustfile_path\tbefore_hash\tafter_hash")
+            for edit in edits:
+                print(
+                    "\t".join(
+                        [
+                            edit.run_id,
+                            edit.edit_id,
+                            edit.suggestion_id,
+                            edit.justfile_path,
+                            edit.before_hash,
+                            edit.after_hash,
+                        ]
+                    )
+                )
+        else:
+            print("| run_id | edit_id | suggestion_id | justfile_path |")
+            print("|---|---|---|---|")
+            for edit in edits:
+                print(
+                    "| {} | {} | {} | {} |".format(
+                        edit.run_id,
+                        edit.edit_id,
+                        edit.suggestion_id,
+                        edit.justfile_path,
+                    )
+                )
+                print("```diff")
+                print(edit.patch_text)
+                print("```")
+
+        logger.info(
+            "Refactor apply complete for run_id={} edits={} validate={} validation_command={}",
+            resolved_run_id,
+            len(edits),
+            validate,
+            validation_command or "",
+        )
+        return
 
     resolved_run_id, suggestions = generate_refactor_plan(db_path=db_path, run_id=run_id)
     if format_lower == "json":

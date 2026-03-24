@@ -10,7 +10,7 @@ import duckdb
 from pytest_just.toolkit import recipe_db as builder
 from pytest_just.toolkit.linting import run_lint
 from pytest_just.toolkit.query_pack import run_named_query
-from pytest_just.toolkit.refactoring import generate_refactor_plan
+from pytest_just.toolkit.refactoring import apply_refactor_plan, generate_refactor_plan
 
 
 def test_discover_repo_justfiles_respects_exclusion_and_case(tmp_path: Path) -> None:
@@ -51,7 +51,10 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     for repo in (repo_ok, repo_fail, repo_excluded):
         repo.mkdir()
 
-    (repo_ok / "justfile").write_text("# placeholder\n", encoding="utf-8")
+    (repo_ok / "justfile").write_text(
+        "test:\n    @echo test\n\ndeploy:\n    @echo deploy\n",
+        encoding="utf-8",
+    )
     (repo_fail / "justfile").write_text("# placeholder\n", encoding="utf-8")
     (repo_excluded / "justfile").write_text("# placeholder\n", encoding="utf-8")
 
@@ -240,6 +243,9 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     assert suggestions[0].rule_id == "missing_public_doc"
     assert "Add recipe documentation comment" in suggestions[0].proposed_action
     assert "```" not in suggestions[0].patch_preview
+    apply_run_id, edits = apply_refactor_plan(db_path=db_path, run_id=run_id, validate=False)
+    assert apply_run_id == run_id
+    assert len(edits) == 1
 
     con = duckdb.connect(str(db_path))
     lint_count_row = con.execute("SELECT COUNT(*) FROM lint_findings WHERE run_id = ?", [run_id]).fetchone()
@@ -248,6 +254,9 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     plan_count_row = con.execute("SELECT COUNT(*) FROM refactor_plans WHERE run_id = ?", [run_id]).fetchone()
     assert plan_count_row is not None
     assert plan_count_row[0] == 1
+    edit_count_row = con.execute("SELECT COUNT(*) FROM refactor_edits WHERE run_id = ?", [run_id]).fetchone()
+    assert edit_count_row is not None
+    assert edit_count_row[0] == 1
     con.close()
 
     report_text = report_path.read_text(encoding="utf-8")
