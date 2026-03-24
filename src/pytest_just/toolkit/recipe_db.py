@@ -17,6 +17,7 @@ import duckdb
 import typer
 from loguru import logger
 from pytest_just import __version__
+from pytest_just.toolkit.linting import list_rules, run_lint
 from pytest_just.toolkit.query_pack import list_named_queries, run_named_query
 
 
@@ -35,7 +36,7 @@ _DEFAULT_LOCAL_EXAMPLES_DIR = _PROJECT_ROOT / "examples" / "local"
 _DEFAULT_DB_PATH = _PROJECT_ROOT / "examples" / "recipes.duckdb"
 _DEFAULT_REPORT_PATH = _PROJECT_ROOT / "docs" / "recipe_reuse_report.md"
 _DEFAULT_LOG_PATH = _PROJECT_ROOT / "logs" / "recipe_db_build.log"
-_LATEST_SCHEMA_VERSION = 2
+_LATEST_SCHEMA_VERSION = 3
 
 app = typer.Typer(help="Build a DuckDB recipe corpus from sibling justfiles.")
 
@@ -312,6 +313,21 @@ def _apply_schema_migrations(con: duckdb.DuckDBPyConnection, applied_utc: str) -
         )
         _record_schema_migration(con, 2, applied_utc)
 
+    if not _has_migration(con, 3):
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lint_findings (
+                run_id VARCHAR,
+                rule_id VARCHAR,
+                severity VARCHAR,
+                repo_name VARCHAR,
+                recipe_name VARCHAR,
+                message VARCHAR,
+                fixable BOOLEAN
+            )
+            """
+        )
+        _record_schema_migration(con, 3, applied_utc)
     return _LATEST_SCHEMA_VERSION
 
 
@@ -765,6 +781,101 @@ def query_corpus(
     for row in rows:
         rendered = [_stringify_scalar(value).replace("\n", " ") for value in row]
         print("| " + " | ".join(rendered) + " |")
+
+@app.command("lint")
+def lint_corpus(
+    db_path: Path = typer.Option(
+        _DEFAULT_DB_PATH,
+        help="Path to corpus DuckDB file.",
+    ),
+    run_id: str | None = typer.Option(
+        None,
+        help="Optional run ID filter.",
+    ),
+    output_format: str = typer.Option(
+        "markdown",
+        "--format",
+        help="Output format: markdown, json, or tsv.",
+    ),
+    fail_on: str = typer.Option(
+        "none",
+        help="Exit policy: none, warning, or error.",
+    ),
+) -> None:
+    """Run lint rules against corpus data and emit diagnostics."""
+    format_lower = output_format.lower()
+    if format_lower not in {"markdown", "json", "tsv"}:
+        raise typer.BadParameter("format must be one of: markdown, json, tsv")
+
+    fail_on_lower = fail_on.lower()
+    if fail_on_lower not in {"none", "warning", "error"}:
+        raise typer.BadParameter("fail-on must be one of: none, warning, error")
+
+    resolved_run_id, findings = run_lint(db_path=db_path, run_id=run_id)
+    if format_lower == "json":
+        payload = [
+            {
+                "run_id": finding.run_id,
+                "rule_id": finding.rule_id,
+                "severity": finding.severity,
+                "repo_name": finding.repo_name,
+                "recipe_name": finding.recipe_name,
+                "message": finding.message,
+                "fixable": finding.fixable,
+            }
+            for finding in findings
+        ]
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif format_lower == "tsv":
+        print("run_id\trule_id\tseverity\trepo_name\trecipe_name\tfixable\tmessage")
+        for finding in findings:
+            message = finding.message.replace("\t", " ").replace("\n", " ")
+            print(
+                "\t".join(
+                    [
+                        finding.run_id,
+                        finding.rule_id,
+                        finding.severity,
+                        finding.repo_name,
+                        finding.recipe_name,
+                        str(finding.fixable).lower(),
+                        message,
+                    ]
+                )
+            )
+    else:
+        print(
+            "| run_id | rule_id | severity | repo_name | recipe_name | fixable | message |"
+        )
+        print("|---|---|---|---|---|---|---|")
+        for finding in findings:
+            message = finding.message.replace("\n", " ")
+            print(
+                "| {} | {} | {} | {} | {} | {} | {} |".format(
+                    finding.run_id,
+                    finding.rule_id,
+                    finding.severity,
+                    finding.repo_name,
+                    finding.recipe_name,
+                    str(finding.fixable).lower(),
+                    message,
+                )
+            )
+
+    warning_count = sum(1 for finding in findings if finding.severity == "warning")
+    error_count = sum(1 for finding in findings if finding.severity == "error")
+    logger.info(
+        "Lint complete for run_id={} rules={} findings={} warnings={} errors={}",
+        resolved_run_id,
+        len(list_rules()),
+        len(findings),
+        warning_count,
+        error_count,
+    )
+    if fail_on_lower == "warning" and (warning_count + error_count) > 0:
+        raise typer.Exit(code=1)
+    if fail_on_lower == "error" and error_count > 0:
+        raise typer.Exit(code=1)
 
 
 @app.command("list-queries")

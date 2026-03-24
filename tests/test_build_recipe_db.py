@@ -8,6 +8,7 @@ from pathlib import Path
 
 import duckdb
 from pytest_just.toolkit import recipe_db as builder
+from pytest_just.toolkit.linting import run_lint
 from pytest_just.toolkit.query_pack import run_named_query
 
 
@@ -179,7 +180,7 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     assert run_row is not None
     run_id, schema_version = run_row
     assert isinstance(run_id, str) and run_id
-    assert schema_version == 2
+    assert schema_version == 3
 
     dependency_count_row = con.execute("SELECT COUNT(*) FROM recipe_dependencies").fetchone()
     assert dependency_count_row is not None
@@ -227,8 +228,20 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     assert parse_columns == ["repo_name", "parse_error"]
     assert parse_rows == [("repo-fail", "syntax error near recipe")]
 
+    lint_run_id, lint_findings = run_lint(db_path=db_path, run_id=run_id)
+    assert lint_run_id == run_id
+    assert len(lint_findings) == 1
+    assert lint_findings[0].rule_id == "missing_public_doc"
+    assert lint_findings[0].recipe_name == "deploy"
+
+    con = duckdb.connect(str(db_path))
+    lint_count_row = con.execute("SELECT COUNT(*) FROM lint_findings WHERE run_id = ?", [run_id]).fetchone()
+    assert lint_count_row is not None
+    assert lint_count_row[0] == 1
+    con.close()
+
     report_text = report_path.read_text(encoding="utf-8")
-    assert "Schema version: `2`" in report_text
+    assert "Schema version: `3`" in report_text
     assert "Run ID:" in report_text
     assert "Repositories parsed: `1`" in report_text
     assert "repo-fail" in report_text
