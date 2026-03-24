@@ -69,6 +69,22 @@ Run:
 ```bash
 uv run pytest -q
 ```
+## Quick start (repository workflow with `justfile`)
+For this repository, a root `justfile` provides a live end-to-end example of using the toolkit.
+
+Recommended first run sequence:
+
+1. `just setup`
+2. `just check`
+3. `just corpus-build`
+4. `just corpus-query`
+5. `just corpus-lint`
+6. `just corpus-refactor-plan`
+
+Optional apply mode (writes files and creates `.bak` backups):
+
+- `just corpus-refactor-apply`
+- `just corpus-refactor-apply-no-validate`
 ## How does pytest-just work?
 `pytest-just` primarily validates recipe contracts instead of running full recipe side effects. It asks `just` for structured metadata and rendered recipe text:
 
