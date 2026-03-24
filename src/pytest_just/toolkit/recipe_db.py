@@ -1,4 +1,4 @@
-"""Build a DuckDB corpus of recipes discovered across sibling justfiles."""
+"""Build and query a DuckDB corpus of recipes discovered across sibling justfiles."""
 
 from __future__ import annotations
 
@@ -11,10 +11,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import duckdb
 import typer
 from loguru import logger
+from pytest_just import __version__
+from pytest_just.toolkit.query_pack import list_named_queries, run_named_query
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,7 @@ _DEFAULT_LOCAL_EXAMPLES_DIR = _PROJECT_ROOT / "examples" / "local"
 _DEFAULT_DB_PATH = _PROJECT_ROOT / "examples" / "recipes.duckdb"
 _DEFAULT_REPORT_PATH = _PROJECT_ROOT / "docs" / "recipe_reuse_report.md"
 _DEFAULT_LOG_PATH = _PROJECT_ROOT / "logs" / "recipe_db_build.log"
+_LATEST_SCHEMA_VERSION = 2
 
 app = typer.Typer(help="Build a DuckDB recipe corpus from sibling justfiles.")
 
@@ -59,7 +63,12 @@ def _discover_repo_justfiles(source_root: Path, exclude_repo: str) -> list[RepoJ
     return repos
 
 
-def _run_just(just_bin: str, repo_path: Path, justfile_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _run_just(
+    just_bin: str,
+    repo_path: Path,
+    justfile_path: Path,
+    *args: str,
+) -> subprocess.CompletedProcess[str]:
     """Execute ``just`` against an explicit justfile path."""
     command = [just_bin, "--justfile", str(justfile_path), *args]
     return subprocess.run(
@@ -154,6 +163,158 @@ def _ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def _stringify_scalar(value: Any) -> str:
+    """Serialise scalar values into stable textual form."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _record_schema_migration(
+    con: duckdb.DuckDBPyConnection,
+    version: int,
+    applied_utc: str,
+) -> None:
+    """Persist an applied schema migration version."""
+    con.execute(
+        "INSERT INTO schema_migrations (version, applied_utc) VALUES (?, ?)",
+        [version, applied_utc],
+    )
+
+
+def _has_migration(con: duckdb.DuckDBPyConnection, version: int) -> bool:
+    """Return whether a schema migration version has already been applied."""
+    row = con.execute(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = ?",
+        [version],
+    ).fetchone()
+    assert row is not None
+    return bool(row[0])
+
+
+def _ensure_column(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    table_name: str,
+    column_name: str,
+    column_type: str,
+) -> None:
+    """Add a column if it does not exist on a table."""
+    columns = {str(row[1]) for row in con.execute(f"PRAGMA table_info('{table_name}')").fetchall()}
+    if column_name not in columns:
+        con.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+
+def _apply_schema_migrations(con: duckdb.DuckDBPyConnection, applied_utc: str) -> int:
+    """Apply in-place schema migrations and return latest schema version."""
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_utc VARCHAR
+        )
+        """
+    )
+
+    if not _has_migration(con, 1):
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS repo_sources (
+                repo_name VARCHAR,
+                repo_path VARCHAR,
+                justfile_path VARCHAR,
+                parsed_success BOOLEAN,
+                parse_error VARCHAR
+            )
+            """
+        )
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recipe_occurrences (
+                repo_name VARCHAR,
+                recipe_name VARCHAR,
+                signature VARCHAR,
+                is_private BOOLEAN,
+                is_shebang BOOLEAN,
+                doc VARCHAR,
+                dependencies_json VARCHAR,
+                parameters_json VARCHAR,
+                body_text VARCHAR,
+                body_normalised VARCHAR,
+                justfile_path VARCHAR
+            )
+            """
+        )
+        _record_schema_migration(con, 1, applied_utc)
+
+    if not _has_migration(con, 2):
+        _ensure_column(
+            con,
+            table_name="repo_sources",
+            column_name="run_id",
+            column_type="VARCHAR",
+        )
+        _ensure_column(
+            con,
+            table_name="recipe_occurrences",
+            column_name="run_id",
+            column_type="VARCHAR",
+        )
+
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingest_runs (
+                run_id VARCHAR PRIMARY KEY,
+                generated_utc VARCHAR,
+                tool_version VARCHAR,
+                source_root VARCHAR,
+                exclude_repo VARCHAR,
+                schema_version INTEGER
+            )
+            """
+        )
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recipe_dependencies (
+                run_id VARCHAR,
+                repo_name VARCHAR,
+                recipe_name VARCHAR,
+                dependency_name VARCHAR,
+                dependency_index INTEGER
+            )
+            """
+        )
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recipe_parameters (
+                run_id VARCHAR,
+                repo_name VARCHAR,
+                recipe_name VARCHAR,
+                parameter_name VARCHAR,
+                parameter_kind VARCHAR,
+                parameter_default VARCHAR,
+                parameter_export BOOLEAN,
+                parameter_index INTEGER
+            )
+            """
+        )
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recipe_aliases (
+                run_id VARCHAR,
+                repo_name VARCHAR,
+                alias_name VARCHAR,
+                target_recipe VARCHAR
+            )
+            """
+        )
+        _record_schema_migration(con, 2, applied_utc)
+
+    return _LATEST_SCHEMA_VERSION
+
+
 def _copy_local_examples(
     repo_justfiles: list[RepoJustfile],
     local_examples_dir: Path,
@@ -192,6 +353,8 @@ def _copy_local_examples(
 def _write_report(
     report_path: Path,
     db_path: Path,
+    run_id: str,
+    schema_version: int,
     generated_utc: str,
     repo_total: int,
     parsed_total: int,
@@ -204,6 +367,8 @@ def _write_report(
     lines: list[str] = []
     lines.append("# Recipe reuse report")
     lines.append(f"Generated: {generated_utc}")
+    lines.append(f"Run ID: `{run_id}`")
+    lines.append(f"Schema version: `{schema_version}`")
     lines.append(f"Database: `{db_path}`")
     lines.append("")
     lines.append("## Summary")
@@ -263,7 +428,9 @@ def build(
     logger.add(lambda msg: print(msg, end=""), level="INFO")
 
     generated_utc = datetime.now(timezone.utc).isoformat()
+    run_id = uuid4().hex
     logger.info("Starting recipe DB build at {}", generated_utc)
+    logger.info("Run ID: {}", run_id)
     logger.info("Source root: {}", source_root)
 
     repo_justfiles = _discover_repo_justfiles(source_root=source_root, exclude_repo=exclude_repo)
@@ -274,8 +441,11 @@ def build(
     )
     logger.info("Manifest written to {}", manifest_path)
 
-    repo_rows: list[tuple[str, str, str, bool, str]] = []
-    recipe_rows: list[tuple[str, str, str, bool, bool, str, str, str, str, str, str]] = []
+    repo_rows: list[tuple[str, str, str, str, bool, str]] = []
+    recipe_rows: list[tuple[str, str, str, str, bool, bool, str, str, str, str, str, str]] = []
+    dependency_rows: list[tuple[str, str, str, str, int]] = []
+    parameter_rows: list[tuple[str, str, str, str, str, str, bool, int]] = []
+    alias_rows: list[tuple[str, str, str, str]] = []
     failures: list[tuple[str, str]] = []
 
     for repo in repo_justfiles:
@@ -284,7 +454,7 @@ def build(
             error = dump_result.stderr.strip().splitlines()[-1] if dump_result.stderr.strip() else "unknown error"
             logger.warning("Skipping {} due to parse failure: {}", repo.repo_name, error)
             failures.append((repo.repo_name, error))
-            repo_rows.append((repo.repo_name, str(repo.repo_path), str(repo.justfile_path), False, error))
+            repo_rows.append((run_id, repo.repo_name, str(repo.repo_path), str(repo.justfile_path), False, error))
             continue
 
         try:
@@ -293,7 +463,7 @@ def build(
             error = "invalid JSON from just --dump"
             logger.warning("Skipping {} due to invalid JSON output", repo.repo_name)
             failures.append((repo.repo_name, error))
-            repo_rows.append((repo.repo_name, str(repo.repo_path), str(repo.justfile_path), False, error))
+            repo_rows.append((run_id, repo.repo_name, str(repo.repo_path), str(repo.justfile_path), False, error))
             continue
 
         recipes = dump_data.get("recipes", {})
@@ -301,10 +471,19 @@ def build(
             error = "recipes is not an object"
             logger.warning("Skipping {} due to malformed recipes payload", repo.repo_name)
             failures.append((repo.repo_name, error))
-            repo_rows.append((repo.repo_name, str(repo.repo_path), str(repo.justfile_path), False, error))
+            repo_rows.append((run_id, repo.repo_name, str(repo.repo_path), str(repo.justfile_path), False, error))
             continue
 
-        repo_rows.append((repo.repo_name, str(repo.repo_path), str(repo.justfile_path), True, ""))
+        repo_rows.append((run_id, repo.repo_name, str(repo.repo_path), str(repo.justfile_path), True, ""))
+        aliases = dump_data.get("aliases", {})
+        if isinstance(aliases, dict):
+            for alias_name, alias_payload in aliases.items():
+                if not isinstance(alias_name, str) or not isinstance(alias_payload, dict):
+                    continue
+                target_recipe = alias_payload.get("target")
+                if isinstance(target_recipe, str):
+                    alias_rows.append((run_id, repo.repo_name, alias_name, target_recipe))
+
         for recipe_name, payload in recipes.items():
             if not isinstance(recipe_name, str) or not isinstance(payload, dict):
                 continue
@@ -337,6 +516,7 @@ def build(
 
             recipe_rows.append(
                 (
+                    run_id,
                     repo.repo_name,
                     recipe_name,
                     signature,
@@ -351,52 +531,122 @@ def build(
                 )
             )
 
+            for dependency_index, dependency_name in enumerate(dependencies):
+                dependency_rows.append(
+                    (run_id, repo.repo_name, recipe_name, dependency_name, dependency_index)
+                )
+            for parameter_index, parameter in enumerate(parameters):
+                parameter_rows.append(
+                    (
+                        run_id,
+                        repo.repo_name,
+                        recipe_name,
+                        str(parameter.get("name") or ""),
+                        str(parameter.get("kind") or ""),
+                        _stringify_scalar(parameter.get("default")),
+                        bool(parameter.get("export", False)),
+                        parameter_index,
+                    )
+                )
+
     _ensure_dir(db_path.parent)
     con = duckdb.connect(str(db_path))
+    schema_version = _apply_schema_migrations(con, generated_utc)
     con.execute(
         """
-        CREATE OR REPLACE TABLE repo_sources (
-            repo_name VARCHAR,
-            repo_path VARCHAR,
-            justfile_path VARCHAR,
-            parsed_success BOOLEAN,
-            parse_error VARCHAR
-        )
-        """
-    )
-    con.execute(
-        """
-        CREATE OR REPLACE TABLE recipe_occurrences (
-            repo_name VARCHAR,
-            recipe_name VARCHAR,
-            signature VARCHAR,
-            is_private BOOLEAN,
-            is_shebang BOOLEAN,
-            doc VARCHAR,
-            dependencies_json VARCHAR,
-            parameters_json VARCHAR,
-            body_text VARCHAR,
-            body_normalised VARCHAR,
-            justfile_path VARCHAR
-        )
-        """
+        INSERT INTO ingest_runs (
+            run_id,
+            generated_utc,
+            tool_version,
+            source_root,
+            exclude_repo,
+            schema_version
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [run_id, generated_utc, __version__, str(source_root), exclude_repo, schema_version],
     )
 
     if repo_rows:
         con.executemany(
-            "INSERT INTO repo_sources VALUES (?, ?, ?, ?, ?)",
+            """
+            INSERT INTO repo_sources (
+                run_id,
+                repo_name,
+                repo_path,
+                justfile_path,
+                parsed_success,
+                parse_error
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
             repo_rows,
         )
     if recipe_rows:
         con.executemany(
-            "INSERT INTO recipe_occurrences VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            """
+            INSERT INTO recipe_occurrences (
+                run_id,
+                repo_name,
+                recipe_name,
+                signature,
+                is_private,
+                is_shebang,
+                doc,
+                dependencies_json,
+                parameters_json,
+                body_text,
+                body_normalised,
+                justfile_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             recipe_rows,
+        )
+    if dependency_rows:
+        con.executemany(
+            """
+            INSERT INTO recipe_dependencies (
+                run_id,
+                repo_name,
+                recipe_name,
+                dependency_name,
+                dependency_index
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            dependency_rows,
+        )
+    if parameter_rows:
+        con.executemany(
+            """
+            INSERT INTO recipe_parameters (
+                run_id,
+                repo_name,
+                recipe_name,
+                parameter_name,
+                parameter_kind,
+                parameter_default,
+                parameter_export,
+                parameter_index
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            parameter_rows,
+        )
+    if alias_rows:
+        con.executemany(
+            """
+            INSERT INTO recipe_aliases (
+                run_id,
+                repo_name,
+                alias_name,
+                target_recipe
+            ) VALUES (?, ?, ?, ?)
+            """,
+            alias_rows,
         )
 
     con.execute(
         """
         CREATE OR REPLACE TABLE unique_recipes AS
         SELECT
+            run_id,
             signature,
             any_value(recipe_name) AS recipe_name,
             any_value(is_private) AS is_private,
@@ -409,7 +659,7 @@ def build(
             COUNT(*) AS occurrence_count,
             COUNT(DISTINCT repo_name) AS repo_count
         FROM recipe_occurrences
-        GROUP BY signature
+        GROUP BY run_id, signature
         """
     )
 
@@ -417,27 +667,32 @@ def build(
         """
         SELECT recipe_name, COUNT(DISTINCT repo_name) AS repo_count, COUNT(*) AS occurrence_count
         FROM recipe_occurrences
+        WHERE run_id = ?
         GROUP BY recipe_name
         ORDER BY repo_count DESC, occurrence_count DESC, recipe_name ASC
         LIMIT 25
-        """
+        """,
+        [run_id],
     ).fetchall()
 
     top_signatures = con.execute(
         """
         SELECT recipe_name, repo_count, occurrence_count, signature
         FROM unique_recipes
-        WHERE repo_count > 1
+        WHERE run_id = ? AND repo_count > 1
         ORDER BY repo_count DESC, occurrence_count DESC, recipe_name ASC
         LIMIT 25
-        """
+        """,
+        [run_id],
     ).fetchall()
     con.close()
 
-    parsed_total = sum(1 for row in repo_rows if row[3])
+    parsed_total = sum(1 for row in repo_rows if row[4])
     _write_report(
         report_path=report_path,
         db_path=db_path,
+        run_id=run_id,
+        schema_version=schema_version,
         generated_utc=generated_utc,
         repo_total=len(repo_rows),
         parsed_total=parsed_total,
@@ -448,7 +703,75 @@ def build(
 
     logger.info("Database written to {}", db_path)
     logger.info("Report written to {}", report_path)
-    logger.info("Done. repos={}, parsed={}, failures={}, recipes={}", len(repo_rows), parsed_total, len(failures), len(recipe_rows))
+    logger.info(
+        "Done. run_id={}, repos={}, parsed={}, failures={}, recipes={}",
+        run_id,
+        len(repo_rows),
+        parsed_total,
+        len(failures),
+        len(recipe_rows),
+    )
+
+
+@app.command("query")
+def query_corpus(
+    query_name: str = typer.Argument(
+        ...,
+        help="Named query identifier. Use `list-queries` to view available queries.",
+    ),
+    db_path: Path = typer.Option(
+        _DEFAULT_DB_PATH,
+        help="Path to corpus DuckDB file.",
+    ),
+    limit: int = typer.Option(
+        25,
+        min=1,
+        help="Maximum row count.",
+    ),
+    run_id: str | None = typer.Option(
+        None,
+        help="Optional run ID filter.",
+    ),
+    output_format: str = typer.Option(
+        "markdown",
+        "--format",
+        help="Output format: markdown, json, or tsv.",
+    ),
+) -> None:
+    """Run a named analytics query against the corpus database."""
+    format_lower = output_format.lower()
+    if format_lower not in {"markdown", "json", "tsv"}:
+        raise typer.BadParameter("format must be one of: markdown, json, tsv")
+
+    columns, rows = run_named_query(
+        db_path=db_path,
+        query_name=query_name,
+        limit=limit,
+        run_id=run_id,
+    )
+    if format_lower == "json":
+        payload = [dict(zip(columns, row)) for row in rows]
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if format_lower == "tsv":
+        print("\t".join(columns))
+        for row in rows:
+            print("\t".join(_stringify_scalar(value).replace("\t", " ") for value in row))
+        return
+
+    print("| " + " | ".join(columns) + " |")
+    print("|" + "|".join(["---"] * len(columns)) + "|")
+    for row in rows:
+        rendered = [_stringify_scalar(value).replace("\n", " ") for value in row]
+        print("| " + " | ".join(rendered) + " |")
+
+
+@app.command("list-queries")
+def list_queries() -> None:
+    """List named query identifiers available to the query command."""
+    for query_name in list_named_queries():
+        print(query_name)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import duckdb
 from pytest_just.toolkit import recipe_db as builder
+from pytest_just.toolkit.query_pack import run_named_query
 
 
 def test_discover_repo_justfiles_respects_exclusion_and_case(tmp_path: Path) -> None:
@@ -174,11 +175,31 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     recipe_count_row = con.execute("SELECT COUNT(*) FROM recipe_occurrences").fetchone()
     assert recipe_count_row is not None
     recipe_count = recipe_count_row[0]
+    run_row = con.execute("SELECT run_id, schema_version FROM ingest_runs").fetchone()
+    assert run_row is not None
+    run_id, schema_version = run_row
+    assert isinstance(run_id, str) and run_id
+    assert schema_version == 2
+
+    dependency_count_row = con.execute("SELECT COUNT(*) FROM recipe_dependencies").fetchone()
+    assert dependency_count_row is not None
+    dependency_count = dependency_count_row[0]
+
+    parameter_count_row = con.execute("SELECT COUNT(*) FROM recipe_parameters").fetchone()
+    assert parameter_count_row is not None
+    parameter_count = parameter_count_row[0]
+
+    alias_count_row = con.execute("SELECT COUNT(*) FROM recipe_aliases").fetchone()
+    assert alias_count_row is not None
+    alias_count = alias_count_row[0]
 
     unique_count_row = con.execute("SELECT COUNT(*) FROM unique_recipes").fetchone()
     assert unique_count_row is not None
     unique_count = unique_count_row[0]
     assert recipe_count == 2
+    assert dependency_count == 1
+    assert parameter_count == 1
+    assert alias_count == 1
     assert unique_count == 2
 
     deploy_body_row = con.execute(
@@ -188,8 +209,27 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     deploy_body = deploy_body_row[0]
     con.close()
     assert "#!/usr/bin/env bash" in deploy_body
+    query_columns, query_rows = run_named_query(
+        db_path=db_path,
+        query_name="top_recipe_names",
+        limit=10,
+        run_id=run_id,
+    )
+    assert query_columns == ["recipe_name", "repo_count", "occurrence_count"]
+    assert [row[0] for row in query_rows] == ["deploy", "test"]
+
+    parse_columns, parse_rows = run_named_query(
+        db_path=db_path,
+        query_name="parse_failures",
+        limit=10,
+        run_id=run_id,
+    )
+    assert parse_columns == ["repo_name", "parse_error"]
+    assert parse_rows == [("repo-fail", "syntax error near recipe")]
 
     report_text = report_path.read_text(encoding="utf-8")
+    assert "Schema version: `2`" in report_text
+    assert "Run ID:" in report_text
     assert "Repositories parsed: `1`" in report_text
     assert "repo-fail" in report_text
 
