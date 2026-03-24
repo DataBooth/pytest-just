@@ -19,6 +19,7 @@ from loguru import logger
 from pytest_just import __version__
 from pytest_just.toolkit.linting import list_rules, run_lint
 from pytest_just.toolkit.query_pack import list_named_queries, run_named_query
+from pytest_just.toolkit.refactoring import generate_refactor_plan
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ _DEFAULT_LOCAL_EXAMPLES_DIR = _PROJECT_ROOT / "examples" / "local"
 _DEFAULT_DB_PATH = _PROJECT_ROOT / "examples" / "recipes.duckdb"
 _DEFAULT_REPORT_PATH = _PROJECT_ROOT / "docs" / "recipe_reuse_report.md"
 _DEFAULT_LOG_PATH = _PROJECT_ROOT / "logs" / "recipe_db_build.log"
-_LATEST_SCHEMA_VERSION = 3
+_LATEST_SCHEMA_VERSION = 4
 
 app = typer.Typer(help="Build a DuckDB recipe corpus from sibling justfiles.")
 
@@ -328,6 +329,36 @@ def _apply_schema_migrations(con: duckdb.DuckDBPyConnection, applied_utc: str) -
             """
         )
         _record_schema_migration(con, 3, applied_utc)
+    if not _has_migration(con, 4):
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS refactor_plans (
+                run_id VARCHAR,
+                suggestion_id VARCHAR,
+                rule_id VARCHAR,
+                repo_name VARCHAR,
+                recipe_name VARCHAR,
+                proposed_action VARCHAR,
+                patch_preview VARCHAR,
+                created_utc VARCHAR
+            )
+            """
+        )
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS refactor_edits (
+                run_id VARCHAR,
+                edit_id VARCHAR,
+                suggestion_id VARCHAR,
+                justfile_path VARCHAR,
+                before_hash VARCHAR,
+                after_hash VARCHAR,
+                patch_text VARCHAR,
+                applied_utc VARCHAR
+            )
+            """
+        )
+        _record_schema_migration(con, 4, applied_utc)
     return _LATEST_SCHEMA_VERSION
 
 
@@ -876,6 +907,84 @@ def lint_corpus(
         raise typer.Exit(code=1)
     if fail_on_lower == "error" and error_count > 0:
         raise typer.Exit(code=1)
+
+@app.command("refactor")
+def refactor_corpus(
+    db_path: Path = typer.Option(
+        _DEFAULT_DB_PATH,
+        help="Path to corpus DuckDB file.",
+    ),
+    run_id: str | None = typer.Option(
+        None,
+        help="Optional run ID filter.",
+    ),
+    output_format: str = typer.Option(
+        "markdown",
+        "--format",
+        help="Output format: markdown, json, or tsv.",
+    ),
+) -> None:
+    """Generate and persist suggestion-only refactor plans."""
+    format_lower = output_format.lower()
+    if format_lower not in {"markdown", "json", "tsv"}:
+        raise typer.BadParameter("format must be one of: markdown, json, tsv")
+
+    resolved_run_id, suggestions = generate_refactor_plan(db_path=db_path, run_id=run_id)
+    if format_lower == "json":
+        payload = [
+            {
+                "run_id": suggestion.run_id,
+                "suggestion_id": suggestion.suggestion_id,
+                "rule_id": suggestion.rule_id,
+                "repo_name": suggestion.repo_name,
+                "recipe_name": suggestion.recipe_name,
+                "proposed_action": suggestion.proposed_action,
+                "patch_preview": suggestion.patch_preview,
+            }
+            for suggestion in suggestions
+        ]
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif format_lower == "tsv":
+        print("run_id\tsuggestion_id\trule_id\trepo_name\trecipe_name\tproposed_action")
+        for suggestion in suggestions:
+            action = suggestion.proposed_action.replace("\t", " ").replace("\n", " ")
+            print(
+                "\t".join(
+                    [
+                        suggestion.run_id,
+                        suggestion.suggestion_id,
+                        suggestion.rule_id,
+                        suggestion.repo_name,
+                        suggestion.recipe_name,
+                        action,
+                    ]
+                )
+            )
+    else:
+        print("| run_id | suggestion_id | rule_id | repo_name | recipe_name | proposed_action |")
+        print("|---|---|---|---|---|---|")
+        for suggestion in suggestions:
+            action = suggestion.proposed_action.replace("\n", " ")
+            print(
+                "| {} | {} | {} | {} | {} | {} |".format(
+                    suggestion.run_id,
+                    suggestion.suggestion_id,
+                    suggestion.rule_id,
+                    suggestion.repo_name,
+                    suggestion.recipe_name,
+                    action,
+                )
+            )
+            print("```diff")
+            print(suggestion.patch_preview)
+            print("```")
+
+    logger.info(
+        "Refactor planning complete for run_id={} suggestions={}",
+        resolved_run_id,
+        len(suggestions),
+    )
+
 
 
 @app.command("list-queries")

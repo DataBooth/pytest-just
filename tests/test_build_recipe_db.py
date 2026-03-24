@@ -10,6 +10,7 @@ import duckdb
 from pytest_just.toolkit import recipe_db as builder
 from pytest_just.toolkit.linting import run_lint
 from pytest_just.toolkit.query_pack import run_named_query
+from pytest_just.toolkit.refactoring import generate_refactor_plan
 
 
 def test_discover_repo_justfiles_respects_exclusion_and_case(tmp_path: Path) -> None:
@@ -180,7 +181,7 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     assert run_row is not None
     run_id, schema_version = run_row
     assert isinstance(run_id, str) and run_id
-    assert schema_version == 3
+    assert schema_version == 4
 
     dependency_count_row = con.execute("SELECT COUNT(*) FROM recipe_dependencies").fetchone()
     assert dependency_count_row is not None
@@ -233,15 +234,24 @@ def test_build_pipeline_writes_expected_tables_with_mocked_just(
     assert len(lint_findings) == 1
     assert lint_findings[0].rule_id == "missing_public_doc"
     assert lint_findings[0].recipe_name == "deploy"
+    refactor_run_id, suggestions = generate_refactor_plan(db_path=db_path, run_id=run_id)
+    assert refactor_run_id == run_id
+    assert len(suggestions) == 1
+    assert suggestions[0].rule_id == "missing_public_doc"
+    assert "Add recipe documentation comment" in suggestions[0].proposed_action
+    assert "```" not in suggestions[0].patch_preview
 
     con = duckdb.connect(str(db_path))
     lint_count_row = con.execute("SELECT COUNT(*) FROM lint_findings WHERE run_id = ?", [run_id]).fetchone()
     assert lint_count_row is not None
     assert lint_count_row[0] == 1
+    plan_count_row = con.execute("SELECT COUNT(*) FROM refactor_plans WHERE run_id = ?", [run_id]).fetchone()
+    assert plan_count_row is not None
+    assert plan_count_row[0] == 1
     con.close()
 
     report_text = report_path.read_text(encoding="utf-8")
-    assert "Schema version: `3`" in report_text
+    assert "Schema version: `4`" in report_text
     assert "Run ID:" in report_text
     assert "Repositories parsed: `1`" in report_text
     assert "repo-fail" in report_text
