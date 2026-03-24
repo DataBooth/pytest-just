@@ -2,21 +2,12 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import duckdb
-
-_BUILDER_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "build_recipe_db.py"
-_BUILDER_SPEC = importlib.util.spec_from_file_location("build_recipe_db", _BUILDER_SCRIPT_PATH)
-assert _BUILDER_SPEC is not None
-assert _BUILDER_SPEC.loader is not None
-builder = importlib.util.module_from_spec(_BUILDER_SPEC)
-sys.modules[_BUILDER_SPEC.name] = builder
-_BUILDER_SPEC.loader.exec_module(builder)
+from pytest_just.toolkit import recipe_db as builder
 
 
 def test_discover_repo_justfiles_respects_exclusion_and_case(tmp_path: Path) -> None:
