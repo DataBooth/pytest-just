@@ -167,13 +167,34 @@ class JustfileFixture:
                 f"Expected exactly: {sorted(expected_set)}"
             )
 
-    def assert_parameter(self, recipe: str, parameter: str) -> None:
-        """Assert that ``recipe`` declares ``parameter``."""
+    def assert_parameter(self, recipe: str, parameter: str, **expected: Any) -> None:
+        """Assert that ``recipe`` declares ``parameter``, optionally checking attributes.
+
+        When called without keyword arguments, checks that the parameter exists.
+        Each keyword argument is checked against the parameter's dump payload.
+
+        Args:
+            recipe: Recipe name or namepath.
+            parameter: Name of the parameter to inspect.
+            **expected: Attribute name/value pairs to verify (e.g.
+                ``short="i"``, ``long="interactive"``, ``kind="singular"``).
+
+        Raises:
+            AssertionError: If the parameter does not exist or any attribute does not match.
+        """
         params = self.parameter_names(recipe)
         assert parameter in params, (
             f"Recipe `{recipe}` is missing parameter `{parameter}`. "
             f"Available parameters: {params}"
         )
+        if expected:
+            raw_params: list[dict[str, Any]] = self.parameters(recipe)
+            p: dict[str, Any] = next(p for p in raw_params if p.get("name") == parameter)
+            ctx: str = f"{recipe}.{parameter}"
+            for attr, want in expected.items():
+                assert attr in p, f"{ctx}: unexpected attribute `{attr}`"
+                got = p[attr]
+                assert got == want, f"{ctx}: expected {attr}={want!r}, got {got!r}"
 
     def assert_body_contains(self, recipe: str, text: str) -> None:
         """Assert that rendered recipe text contains ``text``."""
