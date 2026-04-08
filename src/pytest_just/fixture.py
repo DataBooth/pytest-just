@@ -42,15 +42,15 @@ class JustfileFixture:
             raise JustJsonFormatError("Unexpected just JSON format: top-level value must be an object.")
         return loaded
 
+    @cached_property
+    def _flattened(self) -> dict[str, Any]:
+        """Cached result of ``_flatten`` — recipes and modules."""
+        return self._flatten(self._dump)
+
     @property
     def _recipes(self) -> dict[str, dict[str, Any]]:
-        """Return the validated recipe mapping from the parsed just dump."""
-        recipes = self._dump.get("recipes", {})
-        if not isinstance(recipes, dict):
-            raise JustJsonFormatError("Unexpected just JSON format: `recipes` must be a mapping.")
-        if not all(isinstance(value, dict) for value in recipes.values()):
-            raise JustJsonFormatError("Unexpected just JSON format: each recipe payload must be an object.")
-        return recipes
+        """Recipes flattened across all modules, keyed by namepath."""
+        return self._flattened["recipes"]
 
     def recipe_names(self, *, include_private: bool = False) -> list[str]:
         """List recipe names, optionally including private recipes."""
@@ -232,6 +232,45 @@ class JustfileFixture:
             f"Expected to find {text!r} in dry-run output for `{recipe}`.\n"
             f"Output:\n{combined_output}"
         )
+
+    @property
+    def module_namepaths(self) -> list[str]:
+        """All module paths from the dump, sorted alphabetically."""
+        return self._flattened["modules"]
+
+    @staticmethod
+    def _flatten(node: dict[str, Any]) -> dict[str, Any]:
+        """Flatten the nested module tree from a just JSON dump.
+
+        Returns a dict with ``recipes`` (flat {namepath: recipe_data}) and
+        ``modules`` (sorted list of module paths).
+
+        Args:
+            node: A just JSON dump (root level).
+
+        Returns:
+            ``{"recipes": {namepath: data, ...}, "modules": ["mod", "mod::sub", ...]}``
+        """
+        recipes: dict[str, dict[str, Any]] = {}
+        modules: list[str] = []
+
+        def walk(n: dict[str, Any], prefix: str = "") -> None:
+            raw = n.get("recipes", {})
+            if not isinstance(raw, dict):
+                raise JustJsonFormatError("Unexpected just JSON format: `recipes` must be a mapping.")
+            for name, data in raw.items():
+                if not isinstance(data, dict):
+                    raise JustJsonFormatError("Unexpected just JSON format: each recipe payload must be an object.")
+                recipes[data.get("namepath", name)] = data
+            for mod_name, mod_data in n.get("modules", {}).items():
+                if not isinstance(mod_data, dict):
+                    continue
+                mod_path = f"{prefix}::{mod_name}" if prefix else mod_name
+                modules.append(mod_path)
+                walk(mod_data, mod_path)
+
+        walk(node)
+        return {"recipes": recipes, "modules": sorted(modules)}
 
     def _run(
         self,
