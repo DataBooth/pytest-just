@@ -122,8 +122,8 @@ def test_imported_recipe_is_visible(tmp_path: Path) -> None:
     just.assert_body_contains("hello", "@echo hi")
 
 
-def test_dry_run_rejects_shebang_recipe(tmp_path: Path) -> None:
-    """Ensure shebang recipes are rejected for dry-run execution."""
+def test_dry_run_allows_shebang_recipe(tmp_path: Path) -> None:
+    """Ensure shebang/script recipes can be dry-run safely."""
     (tmp_path / "justfile").write_text(
         "deploy:\n"
         "    #!/usr/bin/env bash\n"
@@ -132,10 +132,8 @@ def test_dry_run_rejects_shebang_recipe(tmp_path: Path) -> None:
     )
     just = JustfileFixture(root=tmp_path)
 
-    with pytest.raises(AssertionError) as exc_info:
-        just.dry_run("deploy")
-
-    assert "not dry-run safe" in str(exc_info.value)
+    result = just.dry_run("deploy")
+    assert result.returncode == 0
 
 
 def test_assert_dry_run_contains_failure_includes_output(tmp_path: Path) -> None:

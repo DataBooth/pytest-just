@@ -207,8 +207,11 @@ class JustfileFixture:
         *args: str,
         env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        """Run ``just --dry-run`` for a non-shebang recipe."""
-        self.assert_not_shebang(recipe)
+        """Run ``just --dry-run`` for any recipe, including shebang and script recipes.
+
+        ``just --dry-run`` does not run recipes of any kind — linewise, shebang, or script. 
+        See https://github.com/casey/just/issues/3177.
+        """
         merged_env = dict(os.environ)
         if env:
             merged_env.update(env)
