@@ -1,0 +1,13 @@
+display_name: pytest-just
+repo: https://github.com/DataBooth/pytest-just
+site_url: https://databooth.github.io/pytest-just/
+
+source:
+  enabled: false
+  branch: main
+  path: src
+
+sections:
+  - title: Project docs
+    dir: docs
+    navbar_after: null

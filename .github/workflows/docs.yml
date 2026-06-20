@@ -1,0 +1,79 @@
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-docs:
+    name: Build docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Install dependencies
+        run: uv sync --frozen --dev
+
+      - name: Build docs
+        run: uv run great-docs build
+
+      - name: Check links (prepublish profile)
+        run: uv run great-docs check-links --docs-only -i "https://databooth.github.io/pytest-just/.*" -i "https://github.com/DataBooth/pytest-just/blob/main/pytest_just/.*"
+
+      - name: Save docs artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: great-docs/_site
+          include-hidden-files: true
+
+  publish-docs:
+    name: Publish docs
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download docs artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: docs-html
+          path: great-docs/_site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: great-docs/_site
+          include-hidden-files: true
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

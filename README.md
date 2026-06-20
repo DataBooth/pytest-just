@@ -40,6 +40,7 @@ This catches automation drift early without requiring full end-to-end execution 
 - Lint/format checks: `ruff`
 - Type checks: `ty`
 - Logging: `loguru`
+- Documentation: `great-docs` (Python 3.11+ for docs tooling)
 ## Install from PyPI
 Add `pytest-just` to your test dependencies:
 
@@ -152,6 +153,19 @@ uv run ruff check .
 uv run ty check
 uv run pytest -q
 ```
+
+## Documentation workflow (Great Docs)
+Great Docs configuration lives in `great-docs.yml`, with CI deployment in `.github/workflows/docs.yml`.
+
+Local commands:
+- `just docs-build`
+- `just docs-preview`
+- `just docs-scan`
+- `just docs-check-links` (prepublish profile, includes temporary ignores for first deploy URL and current generated source-link mismatch URLs)
+- `just docs-check-links-strict` (no ignores; currently expected to surface source-link mismatch issues)
+- `just docs-workflow` / `just docs-workflow-strict`
+
+For setup details and GitHub Pages notes, see `docs/GREAT_DOCS.md`.
 
 ## Property-based testing (Hypothesis)
 The test suite includes property-based tests using `hypothesis` to stress stable invariants such as:
