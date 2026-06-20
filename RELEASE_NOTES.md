@@ -4,6 +4,13 @@
 ### Planned
 - Add packaging/publish automation and release checklist guidance.
 - Expand property-based coverage for additional contract edges.
+## 0.1.3 — 2026-06-20
+### Highlights
+- Added Great Docs configuration and contributor documentation guidance.
+- Added a dedicated docs workflow for GitHub Pages builds and deployments.
+- Added `just` recipes for docs build, preview, scan, and link-check workflows.
+- Added a prepublish link-check profile and documented strict-profile follow-up work.
+- Kept package runtime support at Python 3.10 while scoping docs tooling to Python 3.11+.
 
 ## 0.1.2 — 2026-03-22
 ### Highlights
