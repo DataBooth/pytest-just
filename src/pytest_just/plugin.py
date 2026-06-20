@@ -9,13 +9,26 @@ import pytest
 from .fixture import JustfileFixture
 
 
-def _discover_justfile_root(start: Path) -> Path:
-    """Find the nearest ancestor directory containing a justfile."""
+def _discover_justfile_root(start: Path, stop_at: Path | None = None) -> Path:
+    """Find the nearest ancestor directory containing a justfile.
+
+    Parameters
+    ----------
+    start
+        Directory to start searching from.
+    stop_at
+        Optional upper boundary (inclusive) to stop walking at.
+    """
+    stop_resolved = stop_at.resolve() if stop_at is not None else None
     for candidate in (start, *start.parents):
         if (candidate / "justfile").exists() or (candidate / "Justfile").exists():
             return candidate
+        if stop_resolved is not None and candidate.resolve() == stop_resolved:
+            break
     raise FileNotFoundError(
-        f"No justfile or Justfile found from {start} upwards. "
+        f"No justfile or Justfile found from {start} upwards"
+        + (f" (stopped at {stop_at})" if stop_at is not None else "")
+        + ". "
         "Pass --justfile-root to specify the directory explicitly."
     )
 
@@ -42,12 +55,17 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "justfile: marks tests as justfile recipe tests")
 
 
-def _create_just_fixture(rootpath: Path, justfile_root: str | None, just_bin: str) -> JustfileFixture:
+def _create_just_fixture(
+    rootpath: Path,
+    justfile_root: str | None,
+    just_bin: str,
+    discovery_stop_at: Path | None = None,
+) -> JustfileFixture:
     """Create a configured session fixture from parsed pytest options."""
     if justfile_root:
         root = Path(justfile_root).resolve()
     else:
-        root = _discover_justfile_root(rootpath.resolve())
+        root = _discover_justfile_root(rootpath.resolve(), stop_at=discovery_stop_at)
     return JustfileFixture(root=root, just_bin=just_bin)
 
 

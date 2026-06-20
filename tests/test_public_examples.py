@@ -108,4 +108,4 @@ def test_discover_justfile_root_raises_when_missing(tmp_path: Path) -> None:
     start.mkdir(parents=True)
 
     with pytest.raises(FileNotFoundError):
-        _discover_justfile_root(start)
+        _discover_justfile_root(start, stop_at=tmp_path)

@@ -11,6 +11,7 @@
 - Added `just` recipes for docs build, preview, scan, and link-check workflows.
 - Added a prepublish link-check profile and documented strict-profile follow-up work.
 - Kept package runtime support at Python 3.10 while scoping docs tooling to Python 3.11+.
+- Added an optional discovery boundary for justfile root lookup and used it in tmp-path tests to avoid false passes/failures from ancestor justfiles outside the test sandbox.
 
 ## 0.1.2 — 2026-03-22
 ### Highlights

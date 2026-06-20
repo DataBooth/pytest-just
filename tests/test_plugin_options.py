@@ -67,4 +67,5 @@ def test_session_fixture_raises_when_no_justfile_found(tmp_path: Path) -> None:
             rootpath=nested,
             justfile_root=None,
             just_bin="just",
+            discovery_stop_at=tmp_path,
         )
